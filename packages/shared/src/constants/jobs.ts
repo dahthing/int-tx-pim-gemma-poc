@@ -5,4 +5,13 @@ export const JOB_PATTERNS = {
   SEND_EMAIL_VERIFICATION_EMAIL: 'job:send_email_verification_email',
   SEND_TWO_FACTOR_ENABLED_EMAIL: 'job:send_two_factor_enabled_email',
   SEND_TWO_FACTOR_DISABLED_EMAIL: 'job:send_two_factor_disabled_email',
+  IMPORT_CHANNEL_ORDERS: 'job:import_channel_orders',
+  ROUTE_SUPPLIER_ORDER: 'job:route_supplier_order',
+  POLL_SUPPLIER_ORDER_STATUS: 'job:poll_supplier_order_status',
+  PUSH_SHIPMENT: 'job:push_shipment',
+  SCAN_SHIP_BY_DEADLINES: 'job:scan_ship_by_deadlines',
+  PURGE_ORDER_PII: 'job:purge_order_pii',
+  PUBLISH_LISTING: 'job:publish_listing',
+  SYNC_LISTING_STOCK_PRICE: 'job:sync_listing_stock_price',
+  POLL_LISTING_REVIEW: 'job:poll_listing_review',
 } as const;
