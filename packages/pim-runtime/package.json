@@ -1,5 +1,5 @@
 {
-  "name": "@repo/pim-catalog",
+  "name": "@repo/pim-runtime",
   "private": true,
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -35,7 +35,9 @@
     "@repo/shared": "workspace:*",
     "@repo/shared-types": "workspace:*",
     "decimal.js": "^10.6.0",
-    "zod": "~4.6.5"
+    "zod": "~4.6.5",
+    "@repo/pim-catalog": "workspace:*",
+    "@repo/pim-orders": "workspace:*"
   },
   "devDependencies": {
     "@nestjs/common": "^11.1.28",

@@ -68,7 +68,7 @@
       ]
     },
     "moduleNameMapper": {
-      "^@repo/(core-domain|connector-contracts|http-client|connector-aw-aiku|connector-prestashop9|connector-temu-eu|pim-catalog|pim-orders)$": "<rootDir>/../../$1/src"
+      "^@repo/(core-domain|connector-contracts|http-client|connector-aw-aiku|connector-prestashop9|connector-temu-eu|pim-catalog|pim-orders|pim-runtime)$": "<rootDir>/../../$1/src"
     },
     "collectCoverageFrom": [
       "**/*.ts",
