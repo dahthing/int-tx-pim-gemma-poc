@@ -9,11 +9,29 @@ Accumulated corner cases, gotchas, and non-obvious behaviours discovered during 
 
 <!-- Add Zod-specific surprises here -->
 
+### `import z from 'zod'` in a package consumed with `moduleResolution: node` turns every `z.infer` type into `any`
+
+**Symptom:** `z.infer<typeof schema>` exported from `@repo/shared-types` is `any` in a consumer whose tsconfig uses the Node10 resolver (the `tsconfig.test.json` files do: `module: commonjs`, `moduleResolution: node`), so strict mistakes in service code type-check silently. `tsc` on the package itself (nodenext) is fine.
+
+**Fix:** use the named import `import { z } from 'zod'` in `packages/shared-types/src/schemas/pim/*`. The default import's `z.infer` does not resolve from the emitted `.d.ts` under Node10.
+
+### `nestjs-zod` warns "Found multiple schemas with name ... (nestjs-zod codec bug)" for every root DTO schema that has `.meta({ id })`
+
+Harmless (the first shape wins and the document is correct), but it is printed once per `@ZodResponse` / body DTO whose root schema carries an `id`. Nested reused schemas with an `id` do not warn. The OpenAPI spec of the PIM API silences it.
+
 ---
 
 ## NestJS / SharedModule
 
 <!-- Add NestJS gotchas here -->
+
+### `QueueModule.registerQueues()` always provides `EmailProducer`, so the email queue must be in the list
+
+`registerQueues` returns a module whose providers include `EmailProducer`, which injects `QUEUES.EMAIL` and `ClsService`. Registering only other queues fails DI with "Nest can't resolve dependencies of the EmailProducer". `PimRuntimeModule` therefore registers `QUEUES.EMAIL` next to the PIM queues (`PIM_RUNTIME_QUEUES`).
+
+### Pim ports shared by both feature modules live in a `global: true` core module
+
+`PimCatalogModule.register()` has no `imports` option, so adapters that both it and `PimOrdersModule` need (connector resolver, key provider, enqueuers) are provided and exported by a global dynamic module (`PimRuntimeCoreModule`) instead of being duplicated per module.
 
 ### Sentry tracing silently records nothing unless Sentry initialises before every other import
 
@@ -91,6 +109,10 @@ hoisting at the root hides exactly the failure a pruned deploy reproduces.
 **Cause:** `@nestjs/bullmq`'s peer range for `bullmq` (`^3 || ^4 || ^5 || ^6`) and `packages/shared`'s peer range (`^5.66.5 || ^6.0.0`) are both wide enough to admit the new version, but a plain `pnpm install` after editing only one `package.json` does not always force pnpm to re-resolve every peer-dependency combination against the new version — it can leave a stale `bullmq@6.3.1` resolution wired into `@nestjs/bullmq`'s peer context alongside the freshly-bumped `bullmq@6.3.4` used directly by `apps/worker`. TypeScript then sees two structurally-similar-but-distinct `Queue` classes and refuses the assignment.
 
 **Fix:** run `pnpm dedupe` after bumping a package that multiple workspaces depend on (directly or via a peer range) — it collapses the two resolutions back to one (`grep -n "^  bullmq@" pnpm-lock.yaml` should show exactly one entry). A plain `pnpm install` is not guaranteed to do this on its own. If a build error names a "duplicate" class assignable to its own definition, suspect two resolved copies of the same package before suspecting an actual breaking API change.
+
+### A fixed BullMQ `jobId` silently drops every later enqueue while a finished job with that id is retained
+
+`queue.add(name, data, { jobId })` is a no-op when a job with that id still exists. With `removeOnFail: 500` a failed job stays, so a "retry order" or "sync now" using a stable jobId never runs again. `addUnique()` (pim-runtime `queue/add-unique.ts`) removes a `failed`/`completed` job with the same id first and leaves waiting/active/delayed ones (that is the dedupe). Also: BullMQ rejects `:` in custom job ids, use `-`.
 
 ---
 

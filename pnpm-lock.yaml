@@ -28,6 +28,9 @@ importers:
 
   apps/api:
     dependencies:
+      '@nestjs/bullmq':
+        specifier: ^11.0.5
+        version: 11.0.5(@nestjs/common@11.1.28(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.28)(bullmq@6.3.10(ioredis@5.11.1)(pg@8.23.0))
       '@nestjs/common':
         specifier: ^11.1.28
         version: 11.1.28(reflect-metadata@0.2.2)(rxjs@7.8.2)
@@ -43,18 +46,36 @@ importers:
       '@nestjs/platform-express':
         specifier: ^11.1.28
         version: 11.1.28(@nestjs/common@11.1.28(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.28)
+      '@nestjs/swagger':
+        specifier: ^11.2.6
+        version: 11.4.4(@nestjs/common@11.1.28(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.28)(reflect-metadata@0.2.2)
       '@repo/database':
         specifier: workspace:*
         version: link:../../packages/database
+      '@repo/pim-catalog':
+        specifier: workspace:*
+        version: link:../../packages/pim-catalog
+      '@repo/pim-orders':
+        specifier: workspace:*
+        version: link:../../packages/pim-orders
+      '@repo/pim-runtime':
+        specifier: workspace:*
+        version: link:../../packages/pim-runtime
       '@repo/shared':
         specifier: workspace:*
         version: link:../../packages/shared
       '@repo/shared-types':
         specifier: workspace:*
         version: link:../../packages/shared-types
+      bullmq:
+        specifier: ^6.3.10
+        version: 6.3.10(ioredis@5.11.1)(pg@8.23.0)
       nestjs-pino:
         specifier: ^5.2.1
         version: 5.2.1(@nestjs/common@11.1.28(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.28)(pino-http@11.0.0)(pino@10.3.1)(rxjs@7.8.2)
+      nestjs-zod:
+        specifier: ^5.5.0
+        version: 5.5.0(patch_hash=cae71cedda40e2bfc711c139d95bf70e1c9b3ecfa4d2363ea7c105be8bdca52b)(@nestjs/common@11.1.28(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/swagger@11.4.4(@nestjs/common@11.1.28(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.28)(reflect-metadata@0.2.2))(rxjs@7.8.2)(zod@4.6.0)
       pino-http:
         specifier: ^11.0.0
         version: 11.0.0
@@ -285,6 +306,9 @@ importers:
 
   apps/cron:
     dependencies:
+      '@nestjs/bullmq':
+        specifier: ^11.0.5
+        version: 11.0.5(@nestjs/common@11.1.28(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.28)(bullmq@6.3.10(ioredis@5.11.1)(pg@8.23.0))
       '@nestjs/common':
         specifier: ^11.1.28
         version: 11.1.28(reflect-metadata@0.2.2)(rxjs@7.8.2)
@@ -309,6 +333,15 @@ importers:
       '@repo/shared-types':
         specifier: workspace:*
         version: link:../../packages/shared-types
+      bullmq:
+        specifier: ^6.3.10
+        version: 6.3.10(ioredis@5.11.1)(pg@8.23.0)
+      cron:
+        specifier: ^4.4.0
+        version: 4.4.0
+      ioredis:
+        specifier: ^5.11.1
+        version: 5.11.1
       nestjs-pino:
         specifier: ^5.2.1
         version: 5.2.1(@nestjs/common@11.1.28(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.28)(pino-http@11.0.0)(pino@10.3.1)(rxjs@7.8.2)
@@ -651,6 +684,9 @@ importers:
       '@repo/mail':
         specifier: workspace:*
         version: link:../../packages/mail
+      '@repo/pim-runtime':
+        specifier: workspace:*
+        version: link:../../packages/pim-runtime
       '@repo/shared':
         specifier: workspace:*
         version: link:../../packages/shared
@@ -663,6 +699,9 @@ importers:
       ioredis:
         specifier: ^5.11.1
         version: 5.11.1
+      nestjs-cls:
+        specifier: ^7.0.1
+        version: 7.0.1(@nestjs/common@11.1.28(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.28)(reflect-metadata@0.2.2)(rxjs@7.8.2)
       nestjs-pino:
         specifier: ^5.2.1
         version: 5.2.1(@nestjs/common@11.1.28(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.28)(pino-http@11.0.0)(pino@10.3.1)(rxjs@7.8.2)
@@ -1222,6 +1261,9 @@ importers:
       '@nestjs/common':
         specifier: ^11.1.28
         version: 11.1.28(reflect-metadata@0.2.2)(rxjs@7.8.2)
+      '@nestjs/config':
+        specifier: ^4.0.4
+        version: 4.0.4(@nestjs/common@11.1.28(reflect-metadata@0.2.2)(rxjs@7.8.2))(rxjs@7.8.2)
       '@nestjs/core':
         specifier: ^11.1.28
         version: 11.1.28(@nestjs/common@11.1.28(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/microservices@11.1.28)(@nestjs/platform-express@11.1.28)(reflect-metadata@0.2.2)(rxjs@7.8.2)

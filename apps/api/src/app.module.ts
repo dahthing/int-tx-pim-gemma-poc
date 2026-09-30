@@ -10,6 +10,7 @@ import {
 } from '@repo/shared';
 import { AppController } from './app.controller';
 import { apiEnvSchema } from './env';
+import { PimModule } from './pim/pim.module';
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { apiEnvSchema } from './env';
     }),
     ClientsModule.registerAsync([MicroserviceUtil.registerAuthService()]),
     DatabaseSeederModule,
+    PimModule,
   ],
   controllers: [AppController],
   providers: [
