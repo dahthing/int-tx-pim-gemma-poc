@@ -6,4 +6,6 @@ export const QUEUES = {
   ORDER_STATUS: 'order-status-queue',
   ORDER_MAINTENANCE: 'order-maintenance-queue',
   LISTING_SYNC: 'listing-sync-queue',
+  CATALOG_SYNC: 'catalog-sync-queue',
+  STOCK_SYNC: 'stock-sync-queue',
 } as const;

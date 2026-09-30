@@ -2,6 +2,14 @@ import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { MailModule } from '@repo/mail';
 import { QueueModule, QUEUES, SharedModule } from '@repo/shared';
+import { CatalogSyncConsumer } from './pim/consumers/catalog-sync.consumer';
+import { ListingSyncConsumer } from './pim/consumers/listing-sync.consumer';
+import { OrderImportConsumer } from './pim/consumers/order-import.consumer';
+import { OrderMaintenanceConsumer } from './pim/consumers/order-maintenance.consumer';
+import { OrderRoutingConsumer } from './pim/consumers/order-routing.consumer';
+import { OrderStatusConsumer } from './pim/consumers/order-status.consumer';
+import { StockSyncConsumer } from './pim/consumers/stock-sync.consumer';
+import { PimRuntimeModule } from './pim/pim-runtime';
 import { EmailConsumer } from './consumer/email.consumer';
 import { workerEnvSchema } from './env';
 import { DlqModule } from './dlq/dlq.module';
@@ -13,7 +21,16 @@ import { QueueMetricsService } from './metrics/queue-metrics.service';
       validate: (c) => workerEnvSchema.parse(c),
       metrics: { appName: 'worker' },
     }),
-    QueueModule.registerQueues([QUEUES.EMAIL]),
+    QueueModule.registerQueues([
+      QUEUES.EMAIL,
+      QUEUES.CATALOG_SYNC,
+      QUEUES.STOCK_SYNC,
+      QUEUES.ORDER_IMPORT,
+      QUEUES.ORDER_ROUTING,
+      QUEUES.ORDER_STATUS,
+      QUEUES.ORDER_MAINTENANCE,
+      QUEUES.LISTING_SYNC,
+    ]),
     MailModule.forRootAsync({
       provider: 'brevo',
       imports: [ConfigModule],
@@ -26,8 +43,19 @@ import { QueueMetricsService } from './metrics/queue-metrics.service';
       inject: [ConfigService],
     }),
     DlqModule,
+    PimRuntimeModule.register(),
   ],
   controllers: [],
-  providers: [EmailConsumer, QueueMetricsService],
+  providers: [
+    EmailConsumer,
+    QueueMetricsService,
+    CatalogSyncConsumer,
+    StockSyncConsumer,
+    OrderImportConsumer,
+    OrderRoutingConsumer,
+    OrderStatusConsumer,
+    OrderMaintenanceConsumer,
+    ListingSyncConsumer,
+  ],
 })
 export class AppModule {}

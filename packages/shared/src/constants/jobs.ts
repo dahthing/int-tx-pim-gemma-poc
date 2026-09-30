@@ -14,4 +14,6 @@ export const JOB_PATTERNS = {
   PUBLISH_LISTING: 'job:publish_listing',
   SYNC_LISTING_STOCK_PRICE: 'job:sync_listing_stock_price',
   POLL_LISTING_REVIEW: 'job:poll_listing_review',
+  RUN_CATALOG_FULL_SYNC: 'job:run_catalog_full_sync',
+  RUN_STOCK_COST_SYNC: 'job:run_stock_cost_sync',
 } as const;
