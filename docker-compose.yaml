@@ -276,6 +276,53 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+  # S3-compatible object storage for product images (NFR-07, FR-ENR-001). Path-style addressing, which is what
+  # S3ObjectStorage in @repo/pim-runtime uses. Local dev only: the default credentials below are MinIO's well-known
+  # development defaults, override them through the shell or a git-ignored .env (PIM_S3_* must match).
+  # Images: MinIO no longer publishes to Docker Hub, so the default is quay.io; pin a tag or point
+  # PIM_MINIO_IMAGE / PIM_MINIO_MC_IMAGE at your own mirror.
+  minio:
+    image: ${PIM_MINIO_IMAGE:-quay.io/minio/minio:latest}
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    ports:
+      - '9000:9000' # S3 API  -> PIM_S3_ENDPOINT=http://localhost:9000
+      - '9001:9001' # web console
+    environment:
+      MINIO_ROOT_USER: ${PIM_S3_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${PIM_S3_SECRET_KEY:-minioadmin}
+    volumes:
+      - ./.tmp/minio-data:/data
+    networks:
+      - app
+    healthcheck:
+      test: ['CMD', 'mc', 'ready', 'local']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # One-shot job: creates the image bucket and makes objects publicly readable (channels download images from
+  # PIM_S3_PUBLIC_BASE_URL / <endpoint>/<bucket>, never from AW hotlinks). Idempotent, exits when done.
+  minio-init:
+    image: ${PIM_MINIO_MC_IMAGE:-quay.io/minio/mc:latest}
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      MINIO_ROOT_USER: ${PIM_S3_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${PIM_S3_SECRET_KEY:-minioadmin}
+      PIM_S3_BUCKET: ${PIM_S3_BUCKET:-pim-media}
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 $$MINIO_ROOT_USER $$MINIO_ROOT_PASSWORD &&
+      mc mb --ignore-existing local/$$PIM_S3_BUCKET &&
+      mc anonymous set download local/$$PIM_S3_BUCKET &&
+      echo bucket $$PIM_S3_BUCKET ready"
+    networks:
+      - app
+    restart: 'no'
+
   mongo:
     image: mongo:6.0
     restart: unless-stopped

@@ -50,8 +50,57 @@ jobs:
       - name: Type check
         run: pnpm check-types
 
-      - name: Test
-        run: pnpm test
+      # Unit tests with the per-package coverage gate (PRD: >= 90% lines / 85% branches; thresholds live in each
+      # package's jest config, so this step fails when one drops below).
+      - name: Unit tests with coverage gate
+        run: pnpm test:cov
+
+      - name: Upload coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: |
+            packages/*/coverage/lcov.info
+            apps/*/coverage/lcov.info
+          if-no-files-found: ignore
+
+  # Integration tests (PRD 12.4): Testcontainers Postgres with the real Prisma migrations, external HTTP mocked.
+  # The runner has Docker, so the suites run for real here (locally they skip with a message when Docker is missing).
+  integration:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: quality
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: pnpm db:generate
+
+      - name: Build
+        run: pnpm build
+
+      - name: Verify Docker is available
+        run: docker info
+
+      - name: Integration tests
+        run: pnpm --filter @repo/pim-runtime test:integration
+        env:
+          # Fail the job instead of silently skipping if Docker disappears.
+          PIM_IT_REQUIRE_DOCKER: '1'
 
   # ── Deploy skeleton ────────────────────────────────────────────────────────
   # Uncomment and customise one of the variants below when you have a deploy
