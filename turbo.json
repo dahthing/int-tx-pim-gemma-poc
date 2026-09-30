@@ -1,0 +1,54 @@
+{
+  "$schema": "https://turborepo.dev/schema.json",
+  "ui": "tui",
+  "agentGuidance": false,
+  "concurrency": "15",
+  "tasks": {
+    "build": {
+      "dependsOn": ["db:generate", "^build", "^db:generate"],
+      "inputs": ["$TURBO_DEFAULT$", ".env*"],
+      "outputs": ["dist/**"]
+    },
+    "dev": {
+      "dependsOn": ["^build"],
+      "persistent": true,
+      "cache": false
+    },
+    "lint": {
+      "dependsOn": ["db:generate", "^build", "^db:generate", "^lint"]
+    },
+    "test": {
+      "dependsOn": ["^build"]
+    },
+    "test:watch": {
+      "cache": false,
+      "persistent": true
+    },
+    "test:integration": {
+      "dependsOn": ["^build"],
+      "cache": false
+    },
+    "test:e2e": {
+      "dependsOn": ["^build"],
+      "cache": false
+    },
+    "test:cov": {
+      "dependsOn": ["^build"]
+    },
+    "check-types": {
+      "dependsOn": ["db:generate", "^build", "^db:generate", "^check-types"]
+    },
+    "db:generate": {
+      "dependsOn": ["^db:generate"]
+    },
+    "db:migrate": {
+      "dependsOn": ["^db:migrate"]
+    },
+    "db:seed": {
+      "dependsOn": ["^db:seed"]
+    },
+    "db:push": {
+      "dependsOn": ["^db:push"]
+    }
+  }
+}

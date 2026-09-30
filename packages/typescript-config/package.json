@@ -1,0 +1,14 @@
+{
+  "name": "@repo/typescript-config",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
+  "exports": {
+    "./base": "./base.json",
+    "./nestjs": "./nestjs.json",
+    "./angular-app": "./angular-app.json"
+  }
+}

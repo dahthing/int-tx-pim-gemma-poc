@@ -1,0 +1,112 @@
+{
+  "name": "@repo/shared",
+  "private": true,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "dev": "tsc -p tsconfig.build.json --watch",
+    "test": "jest --passWithNoTests",
+    "test:cov": "jest --coverage --passWithNoTests"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "require": "./dist/index.js",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./sentry": {
+      "types": "./dist/utils/sentry.util.d.ts",
+      "require": "./dist/utils/sentry.util.js",
+      "import": "./dist/utils/sentry.util.js",
+      "default": "./dist/utils/sentry.util.js"
+    }
+  },
+  "peerDependencies": {
+    "@nestjs/bullmq": "^11.0.5",
+    "@nestjs/common": "^11.1.28",
+    "@nestjs/config": "^4.0.4",
+    "@nestjs/core": "^11.1.28",
+    "@nestjs/microservices": "^11.1.28",
+    "@nestjs/mongoose": "^11.0.4",
+    "@nestjs/swagger": "^11.2.6",
+    "@nestjs/terminus": "^11.1.1",
+    "@nestjs/throttler": "^6.5.0",
+    "bullmq": "^5.66.5 || ^6.0.0",
+    "mongoose": "^9.3.0",
+    "rxjs": "^7.8.2"
+  },
+  "dependencies": {
+    "@nest-lab/throttler-storage-redis": "^1.2.0",
+    "@repo/database": "workspace:*",
+    "@repo/shared-types": "workspace:*",
+    "@sentry/nestjs": "^11.1.0",
+    "@willsoto/nestjs-prometheus": "^6.1.1",
+    "cookie-parser": "^1.4.7",
+    "express": "^5.2.1",
+    "helmet": "^8.3.0",
+    "nestjs-cls": "^7.0.1",
+    "nestjs-pino": "^5.2.1",
+    "nestjs-zod": "^5.5.0",
+    "prom-client": "^15.1.3",
+    "zod": "~4.6.5"
+  },
+  "devDependencies": {
+    "@nestjs/testing": "^11.1.28",
+    "@types/cookie-parser": "^1.4.10",
+    "@types/express": "^5.0.6",
+    "@types/jest": "^30.0.0",
+    "@types/node": "^26.6.3",
+    "jest": "^30.5.2",
+    "pino-pretty": "^13.1.3",
+    "ts-jest": "^29.4.14",
+    "typescript": "^6.0.3"
+  },
+  "jest": {
+    "moduleFileExtensions": [
+      "js",
+      "json",
+      "ts"
+    ],
+    "rootDir": "src",
+    "testRegex": ".*\\.spec\\.ts$",
+    "transform": {
+      "^.+\\.(t|j)s$": [
+        "ts-jest",
+        {
+          "tsconfig": "<rootDir>/../tsconfig.test.json"
+        }
+      ]
+    },
+    "collectCoverageFrom": [
+      "**/*.ts",
+      "!**/*.module.ts",
+      "!**/*.spec.ts",
+      "!**/index.ts",
+      "!**/*.schema.ts",
+      "!**/constants/**",
+      "!**/types/**",
+      "!**/decorators/**",
+      "!**/enums/**",
+      "!**/logging/**",
+      "!**/health/**",
+      "!**/publishers/input/**",
+      "!**/queue/input/**",
+      "!**/utils/bootstrap.util.ts",
+      "!**/utils/logger.util.ts",
+      "!**/utils/microservice.util.ts",
+      "!**/metrics/metrics.controller.ts"
+    ],
+    "coverageDirectory": "../coverage",
+    "testEnvironment": "node",
+    "coverageThreshold": {
+      "global": {
+        "branches": 70,
+        "functions": 80,
+        "lines": 80,
+        "statements": 80
+      }
+    }
+  }
+}

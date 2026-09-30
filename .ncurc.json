@@ -1,0 +1,9 @@
+{
+  "reject": [
+    "typescript",
+    "prisma",
+    "@prisma/client",
+    "@nestjs/*",
+    "ioredis"
+  ]
+}

@@ -1,0 +1,19 @@
+packages:
+  - 'apps/*'
+  - 'packages/*'
+overrides:
+  zod: '~4.6.0'
+allowBuilds:
+  '@nestjs/core': true
+  '@prisma/engines': true
+  '@scarf/scarf': true
+  cpu-features: true
+  msgpackr-extract: true
+  msw: true
+  prisma: true
+  protobufjs: true
+  sharp: true
+  ssh2: true
+  unrs-resolver: true
+patchedDependencies:
+  nestjs-zod@5.5.0: patches/nestjs-zod@5.5.0.patch

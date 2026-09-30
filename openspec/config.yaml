@@ -1,0 +1,80 @@
+schema: spec-driven
+
+context: |
+  ## Domain
+  Generic SaaS admin dashboard / starter template built as a Turborepo + pnpm monorepo.
+
+  ## Workspace Structure
+  apps/
+    api/           # NestJS 11 — REST HTTP gateway for the frontend's own backend
+    auth/          # NestJS 11 — authentication + session management (better-auth)
+    notifications/ # NestJS 11 — notification delivery (email via Redis events)
+    worker/        # NestJS 11 — BullMQ worker processing email jobs from queue
+    cron/          # NestJS 11 — scheduled jobs (@nestjs/schedule), health/metrics HTTP
+    web/           # Angular 22 — frontend admin dashboard (standalone components, signals, Angular Material)
+  packages/
+    database/      # Prisma 7 client (PrismaPg adapter), DatabaseModule, DatabaseService, seeders
+    shared/        # Global NestJS infrastructure: constants, abstracts, guards, interceptors,
+                   # filters, publishers, queue, modules, utils, mongo, health,
+                   # encryption (AES field crypto + blind index), interfaces
+    shared-types/  # Zod v4 schemas + zodValidator() shared between apps/web and the NestJS apps (RoleEnum, paginationSchema, etc.)
+    mail/          # MailModule with Brevo provider
+    testing-utils/ # Test factories, DB truncation, testcontainers e2e setup
+    eslint-config/ # Shared ESLint configs
+    typescript-config/ # Shared tsconfig bases
+
+  ## Tech Stack
+  - Monorepo: Turborepo + pnpm workspaces (always use pnpm — never npm or yarn)
+  - Backend: NestJS 11 (TypeScript), microservices via Redis transport
+  - Frontend: Angular 22 (TypeScript, standalone components, signals), Tailwind CSS v4, Angular Material
+  - Database: PostgreSQL via Prisma 7 + PrismaPg adapter (primary); MongoDB via Mongoose (logs/audit only); Redis (cache/queues)
+  - Auth: better-auth + @thallesp/nestjs-better-auth — NEVER use Passport or JWT
+  - Validation: Zod v4 + nestjs-zod (createZodDto, ZodValidationPipe, ZodSerializerInterceptor — registered globally) on the backend; the same schemas drive Angular form validation via zodValidator()
+  - API contract: REST — apps/api's own controllers for the frontend's own backend, same-origin under /api/
+  - Queue: @nestjs/bullmq (BullMQ) with Redis — NOT legacy Bull v4
+  - Logging: nestjs-pino with correlation IDs via nestjs-cls
+  - Health: @nestjs/terminus (HealthController registered globally by SharedModule)
+  - Notifications: MatSnackBar in frontend; email delivery via BullMQ queue → worker → mail package
+  - Themes: signal-backed ThemeService (localStorage) + inline pre-bootstrap script in frontend
+  - Forms: Angular reactive forms + zodValidator() from @repo/shared-types in frontend
+  - Data fetching: @tanstack/angular-query-experimental (injectQuery/injectMutation) in frontend
+  - Deployment: split-subdomain nginx topology — frontend origin serves the static build + same-origin /api/ proxy; auth is a sibling subdomain sharing a parent domain for SSO (see nginx-subdomain-topology capability)
+
+  ## Key Conventions
+  - Internal packages use the @repo/ prefix: @repo/database, @repo/shared, @repo/mail, @repo/shared-types, @repo/testing-utils
+  - Every NestJS app module must import SharedModule.register() first
+  - Never hardcode string tokens, queue names, or patterns — always import from @repo/shared constants:
+      SERVICES, QUEUES, EVENT_PATTERNS, MESSAGE_PATTERNS, JOB_PATTERNS, CLS_CORRELATION_ID
+  - Zod v4 API: z.email() (not z.string().email()), .meta({ id: 'SchemaName' }) for OpenAPI schema IDs
+  - Model conventions: String @id @default(cuid()), createdAt/updatedAt/deletedAt on every model,
+      @@map("snake_case"), @@index on all foreign keys
+  - Do not modify auth.prisma — owned by better-auth
+  - Angular: standalone components only, functional guards (CanActivateFn), signals for local/derived state
+  - Auth client: AUTH_CLIENT InjectionToken (wraps the vanilla better-auth/client) — never implement custom JWT
+  - Use RoleEnum from @repo/shared-types for role checks
+  - Use conventional commits: feat:, fix:, chore:, refactor:, test:, docs:
+  - Run tasks via Turborepo: pnpm build / pnpm dev / pnpm lint / pnpm test
+  - Database commands: pnpm db:generate / pnpm db:migrate / pnpm db:seed
+
+rules:
+  proposal:
+    - Include a "Non-goals" section to define explicit scope boundaries
+    - Include a "Risks & Mitigations" section for non-trivial changes
+    - Include an "Alternatives considered" section when multiple approaches exist
+    - Keep the proposal focused on the why and what, not the how (that belongs in design.md)
+    - Reference the affected apps or packages (e.g., apps/auth, packages/database)
+
+  design:
+    - Specify which app(s) and package(s) are involved in every design decision
+    - Include data model changes (Prisma schema additions) when relevant
+    - Document new event/message patterns, queue jobs, or REST endpoints introduced
+    - Describe the auth/authorization impact (roles, guards) if applicable
+
+  tasks:
+    - Each task should be scoped to ~1–2 hours of work (one feature slice)
+    - 'Prefix each task description with the target path (e.g., "apps/auth: ..." or "packages/database: ...")'
+    - Always include explicit test-writing tasks (unit and/or integration) after each feature task
+    - Use conventional commit format in task titles (feat:, fix:, chore:, refactor:, test:)
+    - Order tasks so dependencies come first (migrations before services, services before controllers)
+    - Group related tasks under a heading, and close every group with a final task that commits that group's work using the project `commit` skill (`/commit`) — it gate-checks build, lint, check-types and tests, then waits for user approval before committing
+    - Include a final task for end-to-end smoke testing or integration verification
