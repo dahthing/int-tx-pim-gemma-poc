@@ -1,0 +1,5 @@
+{"kind":"admin-api","mapper":"order",
+"input":{"orderId":1001,"currentState":2,"dateAdd":"2026-09-01 10:15:00","dateUpd":"2026-09-01 10:20:00","customerId":9,"deliveryAddressId":15,"totalPaidTaxIncl":"30.750000",
+"rows":[{"orderDetailId":501,"productReference":"AAL-07","quantity":2,"unitPriceTaxExcl":"12.500000"},{"orderDetailId":502,"productReference":"ZZZ-99","quantity":1,"unitPriceTaxExcl":"5.000000"}]},
+"expected":{"id":"1001","currentState":"2","placedAt":"2026-09-01T10:15:00.000Z","updatedAt":"2026-09-01T10:20:00.000Z","total":"30.750000","customerId":"9","addressId":"15",
+"lines":[{"lineId":"501","sku":"AAL-07","quantity":2,"unitPrice":"12.500000"},{"lineId":"502","sku":"ZZZ-99","quantity":1,"unitPrice":"5.000000"}]}}

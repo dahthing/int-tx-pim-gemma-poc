@@ -1,0 +1,3 @@
+{"kind":"webservice","mapper":"productList",
+"input":{"products":[{"id":42,"reference":"AAL-07","ean13":"5601234567890","active":"1","price":"12.500000","weight":"0.019000"}]},
+"expected":[{"id":"42","reference":"AAL-07","ean13":"5601234567890"}]}

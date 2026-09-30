@@ -1,0 +1,3 @@
+{"kind":"admin-api","mapper":"productList",
+"input":{"totalItems":1,"limit":50,"items":[{"productId":42,"reference":"AAL-07","ean13":"5601234567890","active":true,"price":"12.500000","weight":"0.019000"}]},
+"expected":[{"id":"42","reference":"AAL-07","ean13":"5601234567890"}]}

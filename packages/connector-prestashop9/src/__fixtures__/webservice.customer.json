@@ -1,0 +1,2 @@
+{"kind":"webservice","mapper":"customer","input":{"customer":{"id":9,"firstname":"Ana","lastname":"Silva","email":"ana@example.com"}},
+"expected":{"name":"Ana Silva","email":"ana@example.com"}}

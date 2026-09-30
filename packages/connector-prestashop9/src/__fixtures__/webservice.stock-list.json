@@ -1,0 +1,3 @@
+{"kind":"webservice","mapper":"stockList",
+"input":{"stock_availables":[{"id":7,"id_product":"42","id_product_attribute":"0","quantity":"5"}]},
+"expected":[{"id":"7","productId":"42","quantity":5}]}

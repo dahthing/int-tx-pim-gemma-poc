@@ -1,0 +1,1 @@
+{"kind":"admin-api","mapper":"token","input":{"access_token":"tok-abc","token_type":"Bearer","expires_in":3600},"expected":{"accessToken":"tok-abc","expiresInSec":3600}}

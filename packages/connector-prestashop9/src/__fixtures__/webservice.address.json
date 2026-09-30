@@ -1,0 +1,2 @@
+{"kind":"webservice","mapper":"address","input":{"address":{"id":15,"firstname":"Ana","lastname":"Silva","address1":"Rua A 1","address2":"","postcode":"1000-001","city":"Lisboa","id_country":"193","phone":"","phone_mobile":"912345678"}},
+"expected":{"fullName":"Ana Silva","line1":"Rua A 1","line2":null,"postalCode":"1000-001","city":"Lisboa","countryId":"193","phone":"912345678"}}

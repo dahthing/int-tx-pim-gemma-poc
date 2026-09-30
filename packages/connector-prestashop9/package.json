@@ -53,7 +53,8 @@
       "**/*.ts",
       "!**/*.spec.ts",
       "!**/index.ts",
-      "!**/*.types.ts"
+      "!**/*.types.ts",
+      "!__fixtures__/**"
     ],
     "coverageDirectory": "../coverage",
     "testEnvironment": "node",

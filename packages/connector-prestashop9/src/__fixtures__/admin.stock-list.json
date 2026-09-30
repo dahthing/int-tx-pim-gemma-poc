@@ -1,0 +1,3 @@
+{"kind":"admin-api","mapper":"stockList",
+"input":{"items":[{"stockAvailableId":7,"productId":42,"productAttributeId":0,"quantity":5}]},
+"expected":[{"id":"7","productId":"42","quantity":5}]}

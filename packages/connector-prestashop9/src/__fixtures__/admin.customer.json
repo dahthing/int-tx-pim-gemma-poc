@@ -1,0 +1,2 @@
+{"kind":"admin-api","mapper":"customer","input":{"customerId":9,"firstName":"Ana","lastName":"Silva","email":"ana@example.com"},
+"expected":{"name":"Ana Silva","email":"ana@example.com"}}
