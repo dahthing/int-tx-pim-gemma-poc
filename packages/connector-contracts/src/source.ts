@@ -87,6 +87,8 @@ export interface SupplierOrderResult {
   externalOrderId?: string;
   totalAmount?: string;
   alert?: 'cost_exceeds_max' | 'quantity_mismatch';
+  /** Redacted last error when state is 'failed'. */
+  error?: string;
 }
 
 export interface SupplierOrderLineStatus {

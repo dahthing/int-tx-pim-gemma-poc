@@ -18,6 +18,8 @@ export interface BatchItemResult {
   externalId: string;
   ok: boolean;
   error?: string;
+  /** True when the item was intentionally not sent (e.g. change pending review). */
+  skipped?: boolean;
 }
 
 export interface BatchResult {

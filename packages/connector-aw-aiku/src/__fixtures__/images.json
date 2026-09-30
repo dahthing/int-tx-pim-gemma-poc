@@ -1,0 +1,1 @@
+{"data":[{"uuid":"b1c2","name":"front.jpg","mime_type":"image/jpeg","source":{"original":"https://cdn.aiku.test/i/front.jpg"},"thumbnail":{"original":"https://cdn.aiku.test/i/front-t.jpg"}},{"uuid":"b1c3","name":"thumb-only.jpg","mime_type":"image/jpeg","thumbnail":{"original":"https://cdn.aiku.test/i/x-t.jpg"}}]}

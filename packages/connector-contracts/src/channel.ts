@@ -20,8 +20,16 @@ export interface ChannelListingPayload {
   seoDescription?: string;
   compliance?: Record<string, unknown>;
   active: boolean;
+  /** Set by the PIM when enrichment is approved; channels may refuse to submit otherwise. */
+  enrichmentApproved?: boolean;
   /** Existing channel id when already linked. */
   externalId?: string;
+  /** Checksums of the images (same order as imageUrls); falls back to the URLs. Optional. */
+  imageChecksums?: string[];
+  /** Hash returned by the previous upsert; unchanged payloads are skipped. Optional. */
+  lastPayloadHash?: string;
+  /** Image checksums returned by the previous upsert. Optional. */
+  lastImageChecksums?: string[];
 }
 
 export interface ChannelListingResult {
@@ -30,6 +38,10 @@ export interface ChannelListingResult {
   status: 'live' | 'submitted' | 'rejected' | 'inactive';
   skipped?: boolean;
   reason?: string;
+  /** Hash of the payload just sent, to persist as last_payload_hash. Optional. */
+  payloadHash?: string;
+  /** Image checksums now on the channel, to persist. Optional. */
+  imageChecksums?: string[];
 }
 
 export interface StockUpdate {
@@ -61,6 +73,8 @@ export interface ChannelOrderRaw {
   customer: { name: string; email?: string | null; phone?: string | null };
   shippingAddress: RecipientAddress;
   lines: ChannelOrderLine[];
+  /** Set by the connector when the order must not be forwarded automatically. Optional. */
+  manualReview?: { reason: 'unknown_sku'; unknownSkus: string[] };
 }
 
 export interface PushShipmentCommand {
