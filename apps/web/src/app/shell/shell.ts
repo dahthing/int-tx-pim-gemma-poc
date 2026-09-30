@@ -26,6 +26,18 @@ interface NavGroup {
 /** Groups mirror the reference admin template's sidebar ("Main" / "System" sections). */
 const NAV_GROUPS: NavGroup[] = [
   { label: 'Main', entries: [{ label: 'Dashboard', path: '/dashboard', icon: 'space_dashboard', adminOnly: false }] },
+  {
+    label: 'PIM',
+    entries: [
+      { label: 'PIM dashboard', path: '/pim/dashboard', icon: 'monitoring', adminOnly: false },
+      { label: 'Supplier catalogue', path: '/pim/catalogue', icon: 'inventory_2', adminOnly: false },
+      { label: 'Products', path: '/pim/products', icon: 'category', adminOnly: false },
+      { label: 'Category mapping', path: '/pim/categories', icon: 'account_tree', adminOnly: false },
+      { label: 'Price rules', path: '/pim/price-rules', icon: 'payments', adminOnly: false },
+      { label: 'Orders', path: '/pim/orders', icon: 'local_shipping', adminOnly: false },
+      { label: 'PIM settings', path: '/pim/settings', icon: 'settings', adminOnly: false },
+    ],
+  },
   { label: 'System', entries: [{ label: 'Users', path: '/users', icon: 'group', adminOnly: true }] },
 ];
 

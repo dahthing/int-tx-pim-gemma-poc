@@ -35,6 +35,10 @@ export const routes: Routes = [
         loadComponent: () => import('./features/dashboard/dashboard').then((m) => m.Dashboard),
       },
       {
+        path: 'pim',
+        loadChildren: () => import('./pim/pim.routes').then((m) => m.PIM_ROUTES),
+      },
+      {
         path: 'account',
         loadComponent: () => import('./features/account/account').then((m) => m.Account),
       },
