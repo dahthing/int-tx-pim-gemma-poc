@@ -12,3 +12,554 @@ generator client {
 datasource db {
   provider = "postgresql"
 }
+
+// =============================================================================
+// PIM domain (docs/prd/gemma-pim-poc.md section 5)
+//
+// Every entity is scoped by tenantId. Money is Decimal(12,4), never Float.
+// Columns suffixed `Enc` are `text` holding core-domain AES-GCM output
+// (encrypted-string envelope, never plaintext): credentials and PII.
+// JSON columns holding PII (ChannelOrder.customer / shippingAddress) store the
+// encrypted envelope as a JSON string value, not cleartext fields.
+// =============================================================================
+
+enum SupplierEnvironment {
+  STAGING
+  PRODUCTION
+}
+
+enum SupplierProductStatus {
+  ACTIVE
+  MISSING
+}
+
+enum AssortmentItemStatus {
+  ACTIVE
+  DISABLED
+}
+
+enum ProductStatus {
+  DRAFT
+  READY
+  PUBLISHED
+  ARCHIVED
+}
+
+enum EnrichmentStatus {
+  NONE
+  AI_DRAFT
+  APPROVED
+}
+
+enum PriceRounding {
+  X99
+  X90
+  NONE
+}
+
+enum ChannelListingStatus {
+  PENDING
+  SUBMITTED
+  LIVE
+  REJECTED
+  INACTIVE
+}
+
+// FR-ORD-001 state machine
+enum OrderInternalStatus {
+  IMPORTED
+  ROUTING
+  SUPPLIER_SUBMITTED
+  SUPPLIER_DISPATCHED
+  TRACKING_PUSHED
+  COMPLETED
+  MANUAL_REVIEW
+  SUPPLIER_FAILED
+  TRACKING_MISSING
+  CANCELLED
+}
+
+enum SupplierOrderState {
+  CREATING
+  SUBMITTED
+  DISPATCHED
+  FAILED
+  CANCELLED
+}
+
+enum ShipmentSource {
+  SUPPLIER_API
+  MANUAL
+}
+
+enum SyncRunStatus {
+  RUNNING
+  SUCCEEDED
+  PARTIAL
+  FAILED
+}
+
+model Tenant {
+  id        String    @id @default(cuid())
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  name String
+  slug String @unique
+
+  suppliers              Supplier[]
+  supplierProducts       SupplierProduct[]
+  supplierAssortments    SupplierAssortmentItem[]
+  products               Product[]
+  productMedia           ProductMedia[]
+  categories             Category[]
+  categoryMappings       CategoryMapping[]
+  priceRules             PriceRule[]
+  channels               Channel[]
+  channelListings        ChannelListing[]
+  channelOrders          ChannelOrder[]
+  supplierOrders         SupplierOrder[]
+  shipments              Shipment[]
+  syncRuns               SyncRun[]
+  integrationRequestLogs IntegrationRequestLog[]
+  auditEvents            AuditEvent[]
+
+  @@map("tenant")
+}
+
+model Supplier {
+  id        String    @id @default(cuid())
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  tenantId       String
+  tenant         Tenant              @relation(fields: [tenantId], references: [id])
+  code           String
+  name           String
+  /// AES-GCM encrypted credentials (core-domain envelope), never plaintext.
+  credentialsEnc String?
+  environment    SupplierEnvironment @default(STAGING)
+  baseUrl        String?
+
+  products        SupplierProduct[]
+  assortmentItems SupplierAssortmentItem[]
+  orders          SupplierOrder[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId])
+  @@map("supplier")
+}
+
+model SupplierProduct {
+  id        String    @id @default(cuid())
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  tenantId       String
+  tenant         Tenant                @relation(fields: [tenantId], references: [id])
+  supplierId     String
+  supplier       Supplier              @relation(fields: [supplierId], references: [id])
+  externalId     String
+  code           String?
+  slug           String?
+  ean            String?
+  name           String
+  descriptionRaw String?
+  department     String?
+  subDepartment  String?
+  family         String?
+  costPrice      Decimal?              @db.Decimal(12, 4)
+  currency       String                @default("EUR")
+  stock          Int                   @default(0)
+  grossWeightG   Int?
+  imageMainUrl   String?
+  rawPayload     Json
+  /// Hash of the payload excluding stock and price (tracked separately).
+  contentHash    String
+  firstSeenAt    DateTime              @default(now())
+  lastSeenAt     DateTime              @default(now())
+  status         SupplierProductStatus @default(ACTIVE)
+
+  assortmentItems SupplierAssortmentItem[]
+  products        Product[]
+
+  @@unique([tenantId, supplierId, externalId])
+  @@index([tenantId])
+  @@index([supplierId])
+  @@index([ean])
+  @@index([status])
+  @@index([department, subDepartment, family])
+  @@map("supplier_product")
+}
+
+model SupplierAssortmentItem {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenantId               String
+  tenant                 Tenant               @relation(fields: [tenantId], references: [id])
+  supplierId             String
+  supplier               Supplier             @relation(fields: [supplierId], references: [id])
+  supplierProductId      String
+  supplierProduct        SupplierProduct      @relation(fields: [supplierProductId], references: [id])
+  /// The id AW order lines require.
+  externalPortfolioId    String
+  sellingPriceAtSupplier Decimal?             @db.Decimal(12, 4)
+  quantityLeft           Int?
+  status                 AssortmentItemStatus @default(ACTIVE)
+
+  @@unique([tenantId, supplierId, externalPortfolioId])
+  @@index([tenantId])
+  @@index([supplierId])
+  @@index([supplierProductId])
+  @@map("supplier_assortment_item")
+}
+
+model Product {
+  id        String    @id @default(cuid())
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  tenantId           String
+  tenant             Tenant           @relation(fields: [tenantId], references: [id])
+  sku                String
+  ean                String?
+  supplierProductId  String?
+  supplierProduct    SupplierProduct? @relation(fields: [supplierProductId], references: [id])
+  categoryId         String?
+  category           Category?        @relation(fields: [categoryId], references: [id])
+  titlePt            String?
+  descriptionPtHtml  String?
+  shortDescriptionPt String?
+  brand              String?
+  weightG            Int?
+  status             ProductStatus    @default(DRAFT)
+  enrichmentStatus   EnrichmentStatus @default(NONE)
+  attributes         Json             @default("{}")
+  /// manufacturer, eu_responsible_person, safety_warnings
+  compliance         Json             @default("{}")
+
+  media    ProductMedia[]
+  listings ChannelListing[]
+
+  @@unique([tenantId, sku])
+  @@index([tenantId])
+  @@index([supplierProductId])
+  @@index([categoryId])
+  @@index([ean])
+  @@index([status])
+  @@map("product")
+}
+
+model ProductMedia {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenantId   String
+  tenant     Tenant  @relation(fields: [tenantId], references: [id])
+  productId  String
+  product    Product @relation(fields: [productId], references: [id])
+  sourceUrl  String
+  storageKey String?
+  width      Int?
+  height     Int?
+  mime       String?
+  position   Int     @default(0)
+  checksum   String?
+
+  @@unique([productId, sourceUrl])
+  @@index([tenantId])
+  @@index([productId])
+  @@map("product_media")
+}
+
+model Category {
+  id        String    @id @default(cuid())
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  tenantId       String
+  tenant         Tenant     @relation(fields: [tenantId], references: [id])
+  parentId       String?
+  parent         Category?  @relation("CategoryTree", fields: [parentId], references: [id])
+  children       Category[] @relation("CategoryTree")
+  name           String
+  normalizedName String
+  slug           String
+
+  products Product[]
+  mappings CategoryMapping[]
+
+  @@unique([tenantId, parentId, slug])
+  @@index([tenantId])
+  @@index([parentId])
+  @@index([normalizedName])
+  @@map("category")
+}
+
+/// supplier (department/sub/family) -> internal category -> channel category id.
+/// History kept: superseded rows get `supersededAt` instead of being overwritten.
+model CategoryMapping {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenantId              String
+  tenant                Tenant    @relation(fields: [tenantId], references: [id])
+  categoryId            String
+  category              Category  @relation(fields: [categoryId], references: [id])
+  channelId             String?
+  channel               Channel?  @relation(fields: [channelId], references: [id])
+  supplierDepartment    String?
+  supplierSubDepartment String?
+  supplierFamily        String?
+  /// Normalized supplier path used for lookup.
+  normalizedKey         String
+  channelCategoryId     String?
+  supersededAt          DateTime?
+
+  @@index([tenantId])
+  @@index([categoryId])
+  @@index([channelId])
+  @@index([tenantId, normalizedKey])
+  @@map("category_mapping")
+}
+
+model PriceRule {
+  id        String    @id @default(cuid())
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  tenantId     String
+  tenant       Tenant        @relation(fields: [tenantId], references: [id])
+  channelId    String?
+  channel      Channel?      @relation(fields: [channelId], references: [id])
+  priority     Int           @default(0)
+  condition    Json          @default("{}")
+  markupPct    Decimal?      @db.Decimal(12, 4)
+  fixedAdd     Decimal?      @db.Decimal(12, 4)
+  rounding     PriceRounding @default(NONE)
+  minMarginPct Decimal?      @db.Decimal(12, 4)
+  vatRate      Decimal       @db.Decimal(12, 4)
+
+  @@index([tenantId])
+  @@index([channelId])
+  @@index([tenantId, channelId, priority])
+  @@map("price_rule")
+}
+
+model Channel {
+  id        String    @id @default(cuid())
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  tenantId       String
+  tenant         Tenant  @relation(fields: [tenantId], references: [id])
+  /// 'prestashop9' | 'temu-eu'
+  code           String
+  name           String?
+  /// AES-GCM encrypted credentials (core-domain envelope), never plaintext.
+  credentialsEnc String?
+  settings       Json    @default("{}")
+  /// TXPIM Scope id
+  scopeId        String?
+
+  listings         ChannelListing[]
+  orders           ChannelOrder[]
+  priceRules       PriceRule[]
+  categoryMappings CategoryMapping[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId])
+  @@index([scopeId])
+  @@map("channel")
+}
+
+model ChannelListing {
+  id        String    @id @default(cuid())
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  tenantId          String
+  tenant            Tenant               @relation(fields: [tenantId], references: [id])
+  productId         String
+  product           Product              @relation(fields: [productId], references: [id])
+  channelId         String
+  channel           Channel              @relation(fields: [channelId], references: [id])
+  externalId        String?
+  externalVariantId String?
+  status            ChannelListingStatus @default(PENDING)
+  lastPrice         Decimal?             @db.Decimal(12, 4)
+  lastStock         Int?
+  lastPayloadHash   String?
+  lastError         String?
+  lastSyncedAt      DateTime?
+
+  @@unique([productId, channelId])
+  @@index([tenantId])
+  @@index([productId])
+  @@index([channelId])
+  @@index([status])
+  @@index([channelId, externalId])
+  @@map("channel_listing")
+}
+
+model ChannelOrder {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenantId        String
+  tenant          Tenant              @relation(fields: [tenantId], references: [id])
+  channelId       String
+  channel         Channel             @relation(fields: [channelId], references: [id])
+  externalId      String
+  externalStatus  String?
+  placedAt        DateTime
+  /// PII: JSON string value holding core-domain AES-GCM output, never cleartext.
+  customer        Json
+  /// PII: JSON string value holding core-domain AES-GCM output, never cleartext.
+  shippingAddress Json
+  lines           Json
+  totalGross      Decimal?            @db.Decimal(12, 4)
+  totalNet        Decimal?            @db.Decimal(12, 4)
+  totalShipping   Decimal?            @db.Decimal(12, 4)
+  currency        String              @default("EUR")
+  internalStatus  OrderInternalStatus @default(IMPORTED)
+
+  supplierOrder SupplierOrder?
+  shipments     Shipment[]
+
+  @@unique([channelId, externalId])
+  @@index([tenantId])
+  @@index([channelId])
+  @@index([internalStatus])
+  @@index([placedAt])
+  @@map("channel_order")
+}
+
+model SupplierOrder {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenantId          String
+  tenant            Tenant             @relation(fields: [tenantId], references: [id])
+  channelOrderId    String             @unique
+  channelOrder      ChannelOrder       @relation(fields: [channelOrderId], references: [id])
+  supplierId        String
+  supplier          Supplier           @relation(fields: [supplierId], references: [id])
+  externalClientId  String?
+  externalOrderId   String?
+  externalReference String?
+  state             SupplierOrderState @default(CREATING)
+  /// Saga progress, e.g. { clientCreated, orderCreated, linesAdded, submitted }
+  sagaProgress      Json               @default("{}")
+  totalNet          Decimal?           @db.Decimal(12, 4)
+  totalGross        Decimal?           @db.Decimal(12, 4)
+  totalShipping     Decimal?           @db.Decimal(12, 4)
+  lastError         String?
+
+  @@index([tenantId])
+  @@index([supplierId])
+  @@index([state])
+  @@index([externalOrderId])
+  @@map("supplier_order")
+}
+
+model Shipment {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenantId          String
+  tenant            Tenant         @relation(fields: [tenantId], references: [id])
+  channelOrderId    String
+  channelOrder      ChannelOrder   @relation(fields: [channelOrderId], references: [id])
+  carrierCode       String?
+  carrierName       String?
+  trackingNumber    String
+  source            ShipmentSource
+  pushedToChannelAt DateTime?
+  pushError         String?
+
+  @@index([tenantId])
+  @@index([channelOrderId])
+  @@index([trackingNumber])
+  @@map("shipment")
+}
+
+model SyncRun {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenantId     String
+  tenant       Tenant        @relation(fields: [tenantId], references: [id])
+  kind         String
+  connector    String
+  startedAt    DateTime      @default(now())
+  finishedAt   DateTime?
+  status       SyncRunStatus @default(RUNNING)
+  counters     Json          @default("{}")
+  errorSummary String?
+
+  @@index([tenantId])
+  @@index([kind, connector])
+  @@index([status])
+  @@index([startedAt])
+  @@map("sync_run")
+}
+
+/// 30 days retention (purged by a cron job). URL stored without secrets.
+model IntegrationRequestLog {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenantId      String
+  tenant        Tenant  @relation(fields: [tenantId], references: [id])
+  connector     String
+  method        String
+  url           String
+  status        Int?
+  durationMs    Int?
+  correlationId String?
+  error         String?
+
+  @@index([tenantId])
+  @@index([connector])
+  @@index([correlationId])
+  @@index([createdAt])
+  @@map("integration_request_log")
+}
+
+model AuditEvent {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+  actor    String
+  entity   String
+  entityId String
+  action   String
+  diff     Json?
+
+  @@index([tenantId])
+  @@index([entity, entityId])
+  @@index([actor])
+  @@index([createdAt])
+  @@map("audit_event")
+}

@@ -98,6 +98,16 @@ hoisting at the root hides exactly the failure a pruned deploy reproduces.
 
 <!-- Add Prisma / DB corner cases here -->
 
+### Generating a migration without a live DB: `migrate diff --from-migrations` needs a shadow DB, and `--from-empty` would re-emit auth tables
+
+**Symptom:** `prisma migrate diff --from-migrations ...` fails with "You must set `datasource.shadowDatabaseUrl`"; `--from-empty --to-schema prisma` emits `CREATE TABLE` for the better-auth tables already in `init`.
+
+**Fix:** put the *previous* schema (auth.prisma + the old schema.prisma) in a scratch dir and run `DATABASE_URL=postgresql://x prisma migrate diff --from-schema <old-dir> --to-schema prisma --script > migrations/<ts>_<name>/migration.sql`. Also, `pnpm --filter @repo/shared-types build` must run before `packages/database` builds or tests on a fresh checkout (`database.service.ts` imports it).
+
+### Nullable column in a composite `@@unique` does not enforce uniqueness in Postgres
+
+`Category @@unique([tenantId, parentId, slug])` allows duplicate root categories (`parentId` NULL, NULLs are distinct). Enforce root-level slug uniqueness in the service layer or with a partial unique index added by hand in the migration.
+
 ### `pnpm db:generate` alone is not enough after editing `auth.prisma` — `packages/database` must also be rebuilt
 
 **Symptom:** after editing `packages/database/prisma/auth.prisma` and running `pnpm db:generate`, a Prisma-backed feature (e.g. better-auth's own runtime schema validation, new in 1.7.3 — see the Authentication section) still reports the *old* schema, even though the freshly generated `packages/database/generated/prisma/**/*.ts` source on disk is correct and the live database has the new columns.

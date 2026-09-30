@@ -21,6 +21,8 @@ describe('DatabaseSeederService', () => {
     const mockDatabaseService = {
       getOrThrow: jest.fn(),
       get: jest.fn(),
+      tenant: { upsert: jest.fn().mockResolvedValue({ id: 't1' }) },
+      supplier: { upsert: jest.fn().mockResolvedValue({ id: 's1' }) },
     };
 
     const module: TestingModule = await Test.createTestingModule({
