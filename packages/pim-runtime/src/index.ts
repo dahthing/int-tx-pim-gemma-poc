@@ -13,3 +13,5 @@ export * from './admin/orders-query.service';
 export * from './admin/dashboard.service';
 export * from './admin/settings.service';
 export * from './admin/sync-trigger.service';
+export * from './adapters/prisma-pending-price.store';
+export * from './adapters/request-log-retention.service';

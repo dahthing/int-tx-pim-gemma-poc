@@ -54,3 +54,15 @@ export const SUPPLIER_STATES = {
   CANCELLED: 'cancelled',
   DISPATCHED: ['dispatched', 'shipped', 'completed'],
 } as const;
+
+/** Keys inside Channel.settings that override the default cancelled / delivered external statuses. */
+export const CHANNEL_STATUS_SETTINGS = {
+  CANCELLED: 'cancelledStatuses',
+  DELIVERED: 'deliveredStatuses',
+} as const;
+
+/** Default external statuses (PS order state ids; Temu order statuses, placeholders until S0.8 / S0.10 are answered). */
+export const CHANNEL_STATUS_DEFAULTS = {
+  PRESTASHOP9: { cancelled: ['6'], delivered: ['5'] },
+  TEMU_EU: { cancelled: ['CANCELLED'], delivered: ['DELIVERED'] },
+} as const;

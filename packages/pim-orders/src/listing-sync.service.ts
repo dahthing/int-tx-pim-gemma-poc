@@ -40,10 +40,14 @@ export interface ReviewSummary {
   live: number;
   rejected: number;
   pending: number;
+  /** Pending price changes Temu approved / rejected (FR-TEMU-002 AC3). */
+  priceApproved: number;
+  priceRejected: number;
 }
 
 interface ReviewCapable {
   pollReviewStatus?(externalIds: string[]): Promise<ReviewOutcome[]>;
+  pollPendingPrices?(): Promise<{ externalId: string; outcome: 'approved' | 'rejected'; reason?: string }[]>;
 }
 
 @Injectable()
@@ -176,8 +180,9 @@ export class ListingSyncService {
   /** Temu review polling: submitted -> live | rejected (with Temu's reason). */
   async pollReviews(tenantId: string, channelId: string): Promise<ReviewSummary> {
     const { connector } = await this.channelAndConnector(tenantId, channelId);
-    const summary: ReviewSummary = { checked: 0, live: 0, rejected: 0, pending: 0 };
+    const summary: ReviewSummary = { checked: 0, live: 0, rejected: 0, pending: 0, priceApproved: 0, priceRejected: 0 };
     const poller = connector as IChannelConnector & ReviewCapable;
+    await this.pollPriceReviews(tenantId, channelId, poller, summary);
     if (typeof poller.pollReviewStatus !== 'function') return summary;
 
     const listings = await this.db.channelListing.findMany({
@@ -209,6 +214,35 @@ export class ListingSyncService {
       }
     }
     return summary;
+  }
+
+  /** Resolves the price changes Temu was reviewing; without this a persisted pending price would block the listing forever. */
+  private async pollPriceReviews(tenantId: string, channelId: string, poller: ReviewCapable, summary: ReviewSummary): Promise<void> {
+    if (typeof poller.pollPendingPrices !== 'function') return;
+    try {
+      for (const o of await poller.pollPendingPrices()) {
+        if (o.outcome === 'approved') {
+          summary.priceApproved++;
+          continue;
+        }
+        summary.priceRejected++;
+        const reason = o.reason ?? 'no reason given';
+        // Forget the price we believed was sent so the next sync sends it again (or the margin guard blocks it).
+        await this.db.channelListing.updateMany({
+          where: { tenantId, channelId, externalId: o.externalId, deletedAt: null },
+          data: { lastPrice: null, lastError: `price rejected by the channel: ${reason}` },
+        });
+        await this.alerts.raise({
+          tenantId,
+          type: ORDER_ALERT_TYPES.PRICE_BLOCKED,
+          message: `Price change for ${o.externalId} was rejected by the channel: ${reason}`,
+          dedupeKey: `${channelId}:${o.externalId}:price_rejected`,
+          metadata: { externalId: o.externalId, channelId },
+        });
+      }
+    } catch (e) {
+      this.logger.error(`Pending price poll failed: ${errorMessage(e)}`);
+    }
   }
 
   private async applyBatch(

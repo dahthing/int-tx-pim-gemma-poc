@@ -22,6 +22,7 @@ import { PriceRulesController } from './price-rules.controller';
 import { ProductsController } from './products.controller';
 import { SettingsController } from './settings.controller';
 import { SupplierProductsController } from './supplier-products.controller';
+import { TriggersController } from './triggers.controller';
 
 const stub = (token: Type) => ({ provide: token, useValue: {} });
 
@@ -36,6 +37,7 @@ describe('OpenAPI document of the PIM API', () => {
         OrdersController,
         OperationsController,
         SettingsController,
+        TriggersController,
       ],
       providers: [
         TenantContext,

@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import {
   acknowledgeAlertResponseSchema,
   alertListQuerySchema,
@@ -174,4 +175,35 @@ export class UpdateChannelRequestDto extends createZodDto(
 ) {}
 export class ConnectionTestResponseDto extends createZodDto(
   connectionTestResponseSchema,
+) {}
+
+// Manual triggers of the scheduled polls (request/response schemas are local to the API: they carry no shared contract)
+const triggerChannelRequestSchema = z
+  .object({ channelId: z.string().min(1).optional() })
+  .meta({ id: 'TriggerChannelRequest' });
+const triggerPollRequestSchema = z
+  .object({})
+  .meta({ id: 'TriggerPollRequest' });
+const triggerChannelsResponseSchema = z
+  .object({
+    enqueued: z.literal(true),
+    kind: z.enum(['order-import', 'listing-review']),
+    channelIds: z.array(z.string()),
+  })
+  .meta({ id: 'TriggerChannelsResponse' });
+const triggerPollResponseSchema = z
+  .object({
+    enqueued: z.literal(true),
+    kind: z.literal('supplier-order-status'),
+  })
+  .meta({ id: 'TriggerPollResponse' });
+
+export class TriggerChannelRequestDto extends createZodDto(
+  triggerChannelRequestSchema,
+) {}
+export class TriggerChannelsResponseDto extends createZodDto(
+  triggerChannelsResponseSchema,
+) {}
+export class TriggerPollResponseDto extends createZodDto(
+  triggerPollResponseSchema,
 ) {}

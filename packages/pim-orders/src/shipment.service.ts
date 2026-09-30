@@ -114,6 +114,8 @@ export class ShipmentService {
     const order = await this.db.channelOrder.findFirst({ where: { id: channelOrderId, tenantId } });
     if (!order) throw new NotFoundException(`Channel order ${channelOrderId} not found`);
     await this.states.moveTo(order, 'COMPLETED');
+    // The purge clock starts at the first delivery report and never restarts.
+    if (decodeOrderLines(order.lines).deliveredAt) return;
     await this.db.channelOrder.update({
       where: { id: order.id },
       data: { lines: asJson(updateOrderMeta(order.lines, { deliveredAt })) },

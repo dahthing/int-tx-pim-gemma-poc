@@ -103,6 +103,14 @@ const cases: Case[] = [
     args: ['t1'],
   },
   {
+    consumer: OrderMaintenanceConsumer,
+    queue: QUEUES.ORDER_MAINTENANCE,
+    name: JOB_PATTERNS.PURGE_REQUEST_LOGS,
+    method: 'purgeRequestLogs',
+    data: { tenantId: 't1' },
+    args: ['t1'],
+  },
+  {
     consumer: ListingSyncConsumer,
     queue: QUEUES.LISTING_SYNC,
     name: JOB_PATTERNS.PUBLISH_LISTING,
@@ -139,6 +147,7 @@ describe.each(cases)('$consumer.name / $name', (c) => {
       'pushShipment',
       'scanShipByDeadlines',
       'purgeOrderPii',
+      'purgeRequestLogs',
       'publishListing',
       'syncListings',
       'pollListingReviews',

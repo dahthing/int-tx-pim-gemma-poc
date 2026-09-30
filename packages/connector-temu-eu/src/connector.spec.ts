@@ -2,7 +2,7 @@ import { createFakeFetch, type FakeCall, type FakeStep, type RequestLogEntry } f
 import type { ChannelListingPayload } from '@repo/connector-contracts';
 import { TemuEuConnector, type TemuEuConnectorConfig } from './connector';
 import { UnknownCarrierError } from './carriers';
-import { PendingPriceTracker } from './pending-price';
+import { PendingPriceTracker, type PendingPriceStore } from './pending-price';
 import { PlaceholderSigner } from './signing';
 import { TEMU_METHODS } from './temu-api';
 
@@ -288,6 +288,30 @@ describe('TemuEuConnector', () => {
       ]);
       expect(tracker.pendingIds()).toEqual(['c']);
     });
+    it('works with an asynchronous (database backed) store', async () => {
+      const inner = new PendingPriceTracker();
+      const store: PendingPriceStore = {
+        isPending: async (id) => inner.isPending(id),
+        markPending: async (id, p, since) => inner.markPending(id, p, since),
+        resolve: async (id) => inner.resolve(id),
+        get: async (id) => inner.get(id),
+        pendingIds: async () => inner.pendingIds(),
+      };
+      const { connector, fetchImpl } = setup(
+        (type) =>
+          type === TEMU_METHODS.priceUpdate
+            ? ok({ results: [{ goodsId: 'a', success: true, pendingReview: true }] })
+            : ok({ results: [{ goodsId: 'a', status: 'APPROVED' }] }),
+        { pendingPrices: store },
+      );
+      await connector.updatePrice([{ externalId: 'a', priceNet: '9.00' }]);
+      expect(inner.pendingIds()).toEqual(['a']);
+      const skipped = await connector.updatePrice([{ externalId: 'a', priceNet: '9.50' }]);
+      expect(skipped.results[0]).toMatchObject({ skipped: true });
+      expect(fetchImpl.calls).toHaveLength(1);
+      expect(await connector.pollPendingPrices()).toEqual([{ externalId: 'a', outcome: 'approved' }]);
+      expect(inner.pendingIds()).toEqual([]);
+    });
     it('pollPendingPrices with nothing pending makes no call', async () => {
       const { connector, fetchImpl } = setup(() => ok({}));
       expect(await connector.pollPendingPrices()).toEqual([]);
@@ -321,7 +345,7 @@ describe('TemuEuConnector', () => {
       const { connector, fetchImpl } = setup(route);
       const page = await connector.listOrdersSince(new Date('2026-04-30T00:00:00Z'));
       const list = bodyOf(fetchImpl.calls[0]!);
-      expect(list.status).toBe('AWAITING_SHIPMENT');
+      expect(list.statuses).toEqual(['AWAITING_SHIPMENT', 'CANCELLED', 'DELIVERED']);
       expect(list.updatedSince).toBe(Math.floor(new Date('2026-04-30T00:00:00Z').getTime() / 1000));
       expect(bodyOf(fetchImpl.calls[1]!)).toMatchObject({ type: TEMU_METHODS.shippingInfoDecrypt, orderSn: 'PO-1' });
       const o = page.items[0]!;
@@ -338,6 +362,21 @@ describe('TemuEuConnector', () => {
       expect(o.shipByAt).toEqual(new Date(1777888800 * 1000));
       expect(page.total).toBe(40);
       expect(page.nextCursor).toEqual({ page: 2, perPage: 20 });
+    });
+    it('also returns cancelled and delivered orders (status tracking) without decrypting their PII', async () => {
+      const rows = [
+        { ...orderRow, orderSn: 'PO-2', status: 'CANCELLED' },
+        { ...orderRow, orderSn: 'PO-3', status: 'DELIVERED' },
+        { ...orderRow, orderSn: 'PO-4', status: 'PENDING_PAYMENT' },
+      ];
+      const { connector, fetchImpl } = setup((type) => (type === TEMU_METHODS.orderList ? ok({ total: 3, orders: rows }) : ok(shipping)));
+      const page = await connector.listOrdersSince(new Date(0));
+      expect(page.items.map((i) => [i.externalId, i.externalStatus])).toEqual([
+        ['PO-2', 'CANCELLED'],
+        ['PO-3', 'DELIVERED'],
+      ]);
+      expect(fetchImpl.calls.filter((c) => bodyOf(c).type === TEMU_METHODS.shippingInfoDecrypt)).toHaveLength(0);
+      expect(page.items[0]!.customer.name).toBe('');
     });
     it('last page has no next cursor; cursor is honoured', async () => {
       const { connector, fetchImpl } = setup(route);

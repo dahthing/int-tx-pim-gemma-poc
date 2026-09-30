@@ -64,4 +64,10 @@ export const PIM_SCHEDULES: readonly PimSchedule[] = [
     configKey: 'CRON_PII_PURGE',
     method: 'enqueuePiiPurge',
   },
+  {
+    name: 'request-log-purge',
+    cron: '30 4 * * *',
+    configKey: 'CRON_REQUEST_LOG_PURGE',
+    method: 'enqueueRequestLogPurge',
+  },
 ];

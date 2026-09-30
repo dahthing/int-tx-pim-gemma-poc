@@ -119,6 +119,10 @@ Gemma accounts.
 - **Assumption in code:** every method name, payload, envelope, error code, the signing algorithm (sorted
   key+value concatenation wrapped in the secret, MD5) and the carrier table are placeholders. Signing test vectors in
   the spec are computed from that same assumption, not from Temu.
+- **Also assumed (status tracking):** order statuses `AWAITING_SHIPMENT`, `CANCELLED`, `DELIVERED`, the `statuses` list filter
+  on the order list call, and that a price under review is resolved by `bg.goods.price.review.get`; the delivery time is
+  taken as the moment the poll first sees `DELIVERED`. Cancelled/delivered status names: `packages/pim-orders/src/constants.ts`
+  (`CHANNEL_STATUS_DEFAULTS`), overridable per channel (`settings.cancelledStatuses` / `deliveredStatuses`).
 - **Where isolated:** `packages/connector-temu-eu/src/signing.ts` (swap the `Signer`), `temu-api.ts` (methods,
   envelope, payloads, error codes), `carriers.ts` (carrier table), gateway host is configuration
   (`settings.gatewayHost`).
@@ -145,6 +149,9 @@ Gemma accounts.
 - **Assumption in code:** products, orders, customers, addresses, countries, shops on the Admin API;
   stock_availables, order_carriers, order_histories and images on the Webservice; camelCase Admin API fields,
   snake_case Webservice fields. Routing is overridable per resource (`settings.routing`).
+- **Also assumed (status tracking):** PrestaShop order state ids 6 (cancelled) and 5 (delivered) are the stock defaults;
+  real ids come from the shop (`settings.cancelledStatuses` / `deliveredStatuses`). The connector factory adds them to
+  `paidStateIds` so the poll returns status changes of known orders.
 - **Where isolated:** `packages/connector-prestashop9/src/endpoints.ts` (paths, envelopes, query syntax),
   `mapper.ts` (field names), `DEFAULT_ROUTING`.
 - **Doc:** [spikes/prestashop9-assumptions.md](spikes/prestashop9-assumptions.md) items 1 to 27.

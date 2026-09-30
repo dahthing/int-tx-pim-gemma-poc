@@ -114,6 +114,14 @@ hoisting at the root hides exactly the failure a pruned deploy reproduces.
 
 `queue.add(name, data, { jobId })` is a no-op when a job with that id still exists. With `removeOnFail: 500` a failed job stays, so a "retry order" or "sync now" using a stable jobId never runs again. `addUnique()` (pim-runtime `queue/add-unique.ts`) removes a `failed`/`completed` job with the same id first and leaves waiting/active/delayed ones (that is the dedupe). Also: BullMQ rejects `:` in custom job ids, use `-`.
 
+### A channel order poll only sees status changes if the connector's own filter lets them through
+
+`listOrdersSince` of the PrestaShop connector filters on `paidStateIds` and the Temu connector used to ask for `AWAITING_SHIPMENT` only, so a cancellation or delivery of a known order never reached the import service. The Temu connector now lists `AWAITING_SHIPMENT`, `CANCELLED`, `DELIVERED` (no shipping PII for the last two), and `ConnectorFactory` adds the cancelled/delivered state ids to the PrestaShop `paidStateIds`. `ChannelOrderImportService` therefore must ignore unknown orders whose status is already cancelled/delivered, and store a known order's new `externalStatus` only after the cancellation/delivery action succeeded (a failed one is retried by the next poll).
+
+### A persisted pending price blocks the listing until something resolves it
+
+`PrismaPendingPriceStore` rows are only removed by `TemuEuConnector.pollPendingPrices()`; `ListingSyncService.pollReviews` calls it. Without that poll a price under review would be skipped forever (the old in-memory tracker forgot it on restart).
+
 ---
 
 ## Database (Prisma / PrismaPg)

@@ -7,6 +7,7 @@ import { PriceRulesController } from './price-rules.controller';
 import { ProductsController } from './products.controller';
 import { SettingsController } from './settings.controller';
 import { SupplierProductsController } from './supplier-products.controller';
+import { TriggersController } from './triggers.controller';
 
 export const PIM_CONTROLLERS = [
   SupplierProductsController,
@@ -16,6 +17,7 @@ export const PIM_CONTROLLERS = [
   OrdersController,
   OperationsController,
   SettingsController,
+  TriggersController,
 ];
 
 /** Back office REST API. Controllers are thin: the logic lives in pim-catalog, pim-orders and pim-runtime services. */

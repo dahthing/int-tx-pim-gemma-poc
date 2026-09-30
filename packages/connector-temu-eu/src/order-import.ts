@@ -3,6 +3,10 @@ import type { Money } from '@repo/core-domain';
 import { computeMaxSupplierCost } from './order-policy';
 
 export const AWAITING_SHIPMENT = 'AWAITING_SHIPMENT';
+export const ORDER_CANCELLED = 'CANCELLED';
+export const ORDER_DELIVERED = 'DELIVERED';
+/** Statuses the poll returns: new orders to import, and known orders to follow to cancellation / delivery. */
+export const TRACKED_ORDER_STATUSES = [AWAITING_SHIPMENT, ORDER_CANCELLED, ORDER_DELIVERED] as const;
 
 export interface OrderImportOptions {
   minMargin: Money;

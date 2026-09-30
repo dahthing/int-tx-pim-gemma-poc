@@ -10,8 +10,9 @@ import {
 } from '@repo/connector-prestashop9';
 import { TemuEuConnector, type CarrierTable } from '@repo/connector-temu-eu';
 import { DatabaseService } from '@repo/database';
-import { CHANNEL_CODES, type ChannelRef } from '@repo/pim-orders';
+import { CHANNEL_CODES, channelStatusSets, type ChannelRef } from '@repo/pim-orders';
 import { CredentialVault } from './credential-vault';
+import { PrismaPendingPriceStore } from './prisma-pending-price.store';
 import { DbRequestLogSink } from './request-log.sink';
 
 export type SupplierEnvironmentName = 'staging' | 'production';
@@ -172,6 +173,16 @@ export class ConnectorFactory {
             },
           }),
         } as unknown as PrestaShop9Settings;
+        // The order poll filters on `paidStateIds`; also ask for cancelled / delivered states so the import sees the
+        // status change of a known order (FR-ORD-001 AC2, FR-TEMU-004 AC2). Unknown orders in those states are ignored.
+        const tracked = channelStatusSets(row.code, settings);
+        const pollStates = [
+          ...new Set([
+            ...merged.paidStateIds,
+            ...[...tracked.cancelled, ...tracked.delivered].map(Number).filter(Number.isInteger),
+          ]),
+        ];
+        merged.paidStateIds = pollStates;
         return new PrestaShop9Connector({
           settings: merged,
           sink,
@@ -194,6 +205,7 @@ export class ConnectorFactory {
           appSecret: t.appSecret,
           accessToken: t.accessToken,
           carrierTable: (settings.carrierTable ?? {}) as CarrierTable,
+          pendingPrices: new PrismaPendingPriceStore(this.db, tenantId, row.id),
           sink,
         });
       }

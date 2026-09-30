@@ -1,6 +1,7 @@
 import { AwAikuConnector } from '@repo/connector-aw-aiku';
 import { PrestaShop9Connector } from '@repo/connector-prestashop9';
 import { TemuEuConnector } from '@repo/connector-temu-eu';
+import { PrismaPendingPriceStore } from './prisma-pending-price.store';
 import { CredentialVault } from './credential-vault';
 import { ConnectorFactory } from './connector-factory';
 
@@ -169,6 +170,29 @@ describe('ConnectorFactory', () => {
         settings,
       }),
     ).toBeInstanceOf(TemuEuConnector);
+  });
+
+  it('backs the Temu connector with the database pending-price store (FR-TEMU-002 AC3)', async () => {
+    const settings = { gatewayHost: 'https://gw.example', carrierTable: {} };
+    const credentialsEnc = await vault.encrypt('t', { appKey: 'k', appSecret: 's', accessToken: 'a' });
+    const { factory } = await build({ channel: { id: 'c', code: 'temu-eu', credentialsEnc, settings } });
+    const c = (await factory.channel({ id: 'c', tenantId: 't', code: 'temu-eu', settings })) as unknown as {
+      cfg: { pendingPrices: unknown };
+    };
+    expect(c.cfg.pendingPrices).toBeInstanceOf(PrismaPendingPriceStore);
+  });
+
+  it('makes the PrestaShop poll also return cancelled and delivered orders so status changes are seen', async () => {
+    const credentialsEnc = await vault.encrypt('t', { adminApi: { clientId: 'id', clientSecret: 'sec' }, webservice: { key: 'k' } });
+    const read = async (settings: Record<string, unknown>) => {
+      const { factory } = await build({ channel: { id: 'c', code: 'prestashop9', credentialsEnc, settings } });
+      const c = (await factory.channel({ id: 'c', tenantId: 't', code: 'prestashop9', settings })) as unknown as {
+        o: { settings: { paidStateIds: number[] } };
+      };
+      return c.o.settings.paidStateIds;
+    };
+    expect(await read(ps9Settings)).toEqual([2, 6, 5]);
+    expect(await read({ ...ps9Settings, cancelledStatuses: [7], deliveredStatuses: ['8', 2] })).toEqual([2, 7, 8]);
   });
 
   it('rejects incomplete channel configuration and unsupported codes', async () => {

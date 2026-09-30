@@ -28,6 +28,10 @@ export class OrderMaintenanceConsumer extends PimConsumerBase {
         return this.run(job, tenantJobSchema, (d) =>
           this.pimJobs.purgeOrderPii(d.tenantId),
         );
+      case JOB_PATTERNS.PURGE_REQUEST_LOGS:
+        return this.run(job, tenantJobSchema, (d) =>
+          this.pimJobs.purgeRequestLogs(d.tenantId),
+        );
       default:
         this.unknown(job);
     }

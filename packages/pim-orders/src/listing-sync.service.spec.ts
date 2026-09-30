@@ -12,7 +12,7 @@ const priceIn = (over: Partial<PriceInput> = {}): PriceInput => ({ cost: '10', v
 
 describe('ListingSyncService', () => {
   let db: DbMock;
-  let connector: { upsertListing: jest.Mock; updateStock: jest.Mock; updatePrice: jest.Mock; pollReviewStatus: jest.Mock };
+  let connector: { upsertListing: jest.Mock; updateStock: jest.Mock; updatePrice: jest.Mock; pollReviewStatus: jest.Mock; pollPendingPrices?: jest.Mock };
   let resolver: { resolve: jest.Mock };
   let builder: { build: jest.Mock };
   let inputs: { getInputs: jest.Mock };
@@ -216,13 +216,46 @@ describe('ListingSyncService', () => {
       expect(db.channelListing.update).toHaveBeenCalledWith({ where: { id: 'a' }, data: { status: 'LIVE', lastError: null, lastSyncedAt: expect.any(Date) } });
       expect(db.channelListing.update).toHaveBeenCalledWith({ where: { id: 'b' }, data: { status: 'REJECTED', lastError: 'bad images', lastSyncedAt: expect.any(Date) } });
       expect(alerts.raise).toHaveBeenCalledWith(expect.objectContaining({ type: ORDER_ALERT_TYPES.LISTING_REJECTED }));
-      expect(res).toEqual({ checked: 3, live: 1, rejected: 1, pending: 1 });
+      expect(res).toEqual({ checked: 3, live: 1, rejected: 1, pending: 1, priceApproved: 0, priceRejected: 0 });
+    });
+
+    describe('pending price reviews (FR-TEMU-002 AC3)', () => {
+      beforeEach(() => {
+        db.channelListing.findMany.mockResolvedValue([]);
+        db.channelListing.updateMany.mockResolvedValue({ count: 1 });
+        connector.pollPendingPrices = jest.fn().mockResolvedValue([
+          { externalId: 'X-a', outcome: 'approved' },
+          { externalId: 'X-b', outcome: 'rejected', reason: 'too low' },
+        ]);
+      });
+
+      it('resolves pending prices even when no listing is awaiting review; a rejected price is re-synced and alerted', async () => {
+        const res = await svc.pollReviews(TENANT, 'ch1');
+        expect(connector.pollPendingPrices).toHaveBeenCalledTimes(1);
+        expect(res).toMatchObject({ priceApproved: 1, priceRejected: 1 });
+        expect(db.channelListing.updateMany).toHaveBeenCalledTimes(1);
+        expect(db.channelListing.updateMany).toHaveBeenCalledWith({
+          where: { tenantId: TENANT, channelId: 'ch1', externalId: 'X-b', deletedAt: null },
+          data: { lastPrice: null, lastError: 'price rejected by the channel: too low' },
+        });
+        expect(alerts.raise).toHaveBeenCalledWith(
+          expect.objectContaining({ type: ORDER_ALERT_TYPES.PRICE_BLOCKED, message: expect.stringContaining('too low') }),
+        );
+      });
+
+      it('does not let a failing price poll break the listing review', async () => {
+        connector.pollPendingPrices!.mockRejectedValue(new Error('temu down'));
+        db.channelListing.findMany.mockResolvedValue([{ id: 'a', externalId: 'X-a', productId: 'p-a' }]);
+        connector.pollReviewStatus.mockResolvedValue([{ externalId: 'X-a', status: 'live' }]);
+        const res = await svc.pollReviews(TENANT, 'ch1');
+        expect(res).toMatchObject({ live: 1, priceApproved: 0, priceRejected: 0 });
+      });
     });
 
     it('does nothing for connectors without review polling or with nothing submitted', async () => {
       db.channelListing.findMany.mockResolvedValue([{ id: 'a', externalId: 'X-a', productId: 'p' }]);
       delete (connector as Partial<typeof connector>).pollReviewStatus;
-      await expect(svc.pollReviews(TENANT, 'ch1')).resolves.toEqual({ checked: 0, live: 0, rejected: 0, pending: 0 });
+      await expect(svc.pollReviews(TENANT, 'ch1')).resolves.toEqual({ checked: 0, live: 0, rejected: 0, pending: 0, priceApproved: 0, priceRejected: 0 });
       connector.pollReviewStatus = jest.fn();
       db.channelListing.findMany.mockResolvedValue([]);
       await svc.pollReviews(TENANT, 'ch1');

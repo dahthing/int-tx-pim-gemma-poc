@@ -112,6 +112,11 @@ describe('PimEnqueueService', () => {
       JOB_PATTERNS.SCAN_SHIP_BY_DEADLINES,
     ],
     ['enqueuePiiPurge', QUEUES.ORDER_MAINTENANCE, JOB_PATTERNS.PURGE_ORDER_PII],
+    [
+      'enqueueRequestLogPurge',
+      QUEUES.ORDER_MAINTENANCE,
+      JOB_PATTERNS.PURGE_REQUEST_LOGS,
+    ],
   ] as const)(
     '%s enqueues one job per active tenant',
     async (method, queue, job) => {

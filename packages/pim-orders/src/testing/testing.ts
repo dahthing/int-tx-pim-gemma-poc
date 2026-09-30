@@ -16,7 +16,7 @@ export function createDbMock() {
     supplierOrder: model('upsert', 'findFirst', 'findMany', 'update'),
     supplierAssortmentItem: model('findMany'),
     shipment: model('findFirst', 'findMany', 'create', 'update'),
-    channelListing: model('findMany', 'findFirst', 'upsert', 'update'),
+    channelListing: model('findMany', 'findFirst', 'upsert', 'update', 'updateMany'),
   };
 }
 export type DbMock = ReturnType<typeof createDbMock>;

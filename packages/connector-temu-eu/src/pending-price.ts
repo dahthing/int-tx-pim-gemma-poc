@@ -4,13 +4,15 @@ export interface PendingPrice {
   since: Date;
 }
 
-/** Persistence seam: the default is in-memory; the app can back it with a table. */
+type MaybePromise<T> = T | Promise<T>;
+
+/** Persistence seam: the default is in-memory; the runtime backs it with a table (FR-TEMU-002 AC3). */
 export interface PendingPriceStore {
-  isPending(externalId: string): boolean;
-  markPending(externalId: string, priceNet: string, since: Date): void;
-  resolve(externalId: string): void;
-  get(externalId: string): PendingPrice | undefined;
-  pendingIds(): string[];
+  isPending(externalId: string): MaybePromise<boolean>;
+  markPending(externalId: string, priceNet: string, since: Date): MaybePromise<void>;
+  resolve(externalId: string): MaybePromise<void>;
+  get(externalId: string): MaybePromise<PendingPrice | undefined>;
+  pendingIds(): MaybePromise<string[]>;
 }
 
 export class PendingPriceTracker implements PendingPriceStore {

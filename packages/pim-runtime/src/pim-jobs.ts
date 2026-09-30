@@ -19,6 +19,7 @@ import {
   type StatusPollSummary,
   type SyncSummary,
 } from '@repo/pim-orders';
+import { RequestLogRetentionService } from './adapters/request-log-retention.service';
 import { SupplierScope } from './supplier-scope';
 
 /**
@@ -39,6 +40,7 @@ export class PimJobs {
     private readonly shipments: ShipmentService,
     private readonly listings: ListingSyncService,
     private readonly scope: SupplierScope,
+    private readonly requestLogs: RequestLogRetentionService,
   ) {}
 
   /** FR-ING-001 (daily + on demand). */
@@ -102,6 +104,15 @@ export class PimJobs {
     retentionDays?: number,
   ): Promise<{ scanned: number; purged: number }> {
     return this.shipments.purgeExpiredPii(tenantId, now, retentionDays);
+  }
+
+  /** Section 5 retention: IntegrationRequestLog rows older than 30 days. */
+  purgeRequestLogs(
+    tenantId: string,
+    now?: Date,
+    retentionDays?: number,
+  ): Promise<{ deleted: number }> {
+    return this.requestLogs.purge(tenantId, now, retentionDays);
   }
 
   publishListing(

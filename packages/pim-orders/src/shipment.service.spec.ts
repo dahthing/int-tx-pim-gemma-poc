@@ -159,6 +159,15 @@ describe('ShipmentService', () => {
       const data = db.channelOrder.update.mock.calls[0][0].data;
       expect(decodeOrderLines(data.lines).deliveredAt).toEqual(at);
     });
+    it('keeps the first deliveredAt so the 90-day clock never restarts', async () => {
+      const first = new Date('2026-09-10T00:00:00.000Z');
+      const o = order('COMPLETED');
+      o.lines = { ...encodeOrderLines({ items: [], shipByAt: null }), deliveredAt: first.toISOString() };
+      db.channelOrder.findFirst.mockResolvedValue(o);
+      await svc.markDelivered(TENANT, 'co1', new Date('2026-10-01T00:00:00.000Z'));
+      const data = db.channelOrder.update.mock.calls[0]?.[0].data;
+      expect(data ? decodeOrderLines(data.lines).deliveredAt : first).toEqual(first);
+    });
     it('404 when missing', async () => {
       db.channelOrder.findFirst.mockResolvedValue(null);
       await expect(svc.markDelivered(TENANT, 'x', new Date())).rejects.toBeInstanceOf(NotFoundException);

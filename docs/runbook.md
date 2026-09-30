@@ -34,6 +34,14 @@ MinIO images are pulled from `quay.io/minio/*` (Docker Hub no longer has them); 
 
 Node must be the `.nvmrc` version for `apps/web` (`nvm use`).
 
+### Running the apps
+
+`docker-compose.yaml` only runs infrastructure. The commented-out Next.js-era service blocks (traefik, auth,
+notifications, worker, web) were removed: the app Dockerfiles still copy the deleted `packages/trpc` and none of the
+`pim-*` / `connector-*` packages, so they do not build, and `apps/cron` has no Dockerfile at all. Run the apps with
+`pnpm dev` (or PM2, see `DEPLOY-PM2.md`). Adding containers for api, worker, cron and web means fixing those Dockerfiles
+first (workspace manifests to copy, cron Dockerfile, health ports 3100 / 3400 / 3200) and is not done.
+
 ### Environment variables
 
 Declared with empty values in the root `.env.example`; the api and worker apps read them through `ConfigService`
@@ -49,7 +57,7 @@ in the back office (Settings) and stored AES-256-GCM encrypted in the database.
 | `ANTHROPIC_API_KEY`, `PIM_LLM_MODEL`, `PIM_LLM_BASE_URL`, `PIM_LLM_MAX_TOKENS`                                                                                                                                        | PT-PT enrichment                                             | not needed unless "Generate" is used                                                                               |
 | `PIM_ORDER_DEFAULT_EMAIL`, `PIM_ORDER_DEFAULT_PHONE`                                                                                                                                                                  | Used when a channel hides the customer email or phone (Temu) | required for order routing, never leave empty                                                                      |
 | `PIM_ORDER_MIN_MARGIN`, `PIM_ORDER_VAT_RATE`, `PIM_ORDER_SHIPPING_ABSORBED`                                                                                                                                           | Cap on the AW order cost (fractions: 0.15 = 15%)             | defaults 0.15 and 0.23                                                                                             |
-| `CRON_TIMEZONE`, `CRON_AW_CATALOG_FULL`, `CRON_AW_STOCK_SYNC`, `CRON_PS_ORDER_IMPORT`, `CRON_TEMU_ORDER_IMPORT`, `CRON_SUPPLIER_ORDER_STATUS_POLL`, `CRON_LISTING_REVIEW_POLL`, `CRON_SHIP_BY_SCAN`, `CRON_PII_PURGE` | Cron overrides (cron app)                                    | default timezone `Europe/Lisbon`                                                                                   |
+| `CRON_TIMEZONE`, `CRON_AW_CATALOG_FULL`, `CRON_AW_STOCK_SYNC`, `CRON_PS_ORDER_IMPORT`, `CRON_TEMU_ORDER_IMPORT`, `CRON_SUPPLIER_ORDER_STATUS_POLL`, `CRON_LISTING_REVIEW_POLL`, `CRON_SHIP_BY_SCAN`, `CRON_PII_PURGE`, `CRON_REQUEST_LOG_PURGE` | Cron overrides (cron app)                                    | default timezone `Europe/Lisbon`                                                                                   |
 
 ### First-time setup in the back office (Settings)
 
@@ -81,13 +89,13 @@ API calls need an authenticated back office session (Better Auth cookie); the sc
 | Full catalogue sync (FR-ING-001) | Dashboard "sync now", or `POST /api/sync/catalog` with `{ "supplierId": "<id>" }` (optional). 202 when queued, 409 while one runs (a RUNNING run older than 2 h is treated as dead). Watch `GET /api/sync-runs`                |
 | Stock and cost sync (FR-ING-002) | `POST /api/sync/stock-cost` (same body)                                                                                                                                                                                        |
 | Publish / unpublish a product    | Product detail, Channels tab, or `POST /api/products/:id/channels/:channelId/publish` and `/unpublish`. Needs approved enrichment, mapped category, images and a non-blocked price (`GET .../readiness` lists what is missing) |
-| Import channel orders            | Scheduled every 10 min. No API trigger: enqueue `job:import_channel_orders` with `{ tenantId, channelId }` on `order-import-queue`                                                                                             |
+| Import channel orders            | Scheduled every 10 min. Admin: `POST /api/orders/import` with `{ "channelId": "<id>" }` (optional, default every channel). 202, 404 for an unknown channel. The poll also picks up cancelled and delivered orders (section 4)   |
 | Route an order to AW             | Orders, "Retry", or `POST /api/orders/:id/retry`                                                                                                                                                                               |
-| Poll supplier order status       | Scheduled every 15 min; manual: job `job:poll_supplier_order_status` with `{ tenantId }` on `order-status-queue`                                                                                                               |
-| Poll Temu listing reviews        | Scheduled every 30 min; job `job:poll_listing_review` `{ tenantId, channelId }` on `listing-sync-queue`                                                                                                                        |
+| Poll supplier order status       | Scheduled every 15 min. Admin: `POST /api/orders/supplier-status/poll` (empty body)                                                                                                                                            |
+| Poll Temu listing reviews        | Scheduled every 30 min. Admin: `POST /api/listings/reviews/poll` with `{ "channelId": "<id>" }` (optional, default every Temu channel). Also resolves pending price reviews                                                   |
 
 Schedules (Europe/Lisbon): catalogue 03:30 daily, stock every 30 min, PS and Temu order import every 10 min, supplier
-status every 15 min, Temu review poll every 30 min, ship-by scan hourly, PII purge 04:00 daily. The cron app must run as
+status every 15 min, Temu review poll every 30 min, ship-by scan hourly, PII purge 04:00 daily, request log purge 04:30 daily (`CRON_REQUEST_LOG_PURGE`). The cron app must run as
 a single instance.
 
 Queue jobs can be added with any BullMQ client against Redis. A stable `jobId` is used; a failed job with the same
@@ -122,8 +130,21 @@ UPDATE supplier_order
 
 Then press "Retry". Do not touch `supplier_order` while a job for that order is running.
 
-A channel cancellation is **not** detected automatically in this POC (the cancel service exists but nothing calls it):
-check cancelled orders in PrestaShop or Temu by hand and, if the AW order is still a draft, delete it in AW.
+**Channel cancellations (FR-ORD-001 AC2) and deliveries (FR-TEMU-004 AC2) are detected by the order poll.** When a known
+order's external status changes to a cancelled status, `OrderCancellationService` runs: the AW draft is deleted while the
+AW order is still `creating` (order `cancelled`), otherwise the order goes to `manual_review` with alert
+`cancellation_needs_manual_review` (AW orders are never deleted automatically); a failed draft delete raises
+`supplier_draft_delete_failed` and the order goes to `manual_review`. When it changes to a delivered status the order is
+completed and `deliveredAt` is stored, which starts the 90 day Temu PII purge clock. The status is stored only after
+the action succeeded, so a failure is retried by the next poll (the poll cursor does not advance while an item fails).
+Orders already cancelled or delivered when first seen are never imported.
+
+Status values: PrestaShop order state ids, default cancelled `6` and delivered `5`; Temu `CANCELLED` and `DELIVERED`
+(placeholders, S0.8). Override per channel in Settings JSON with `settings.cancelledStatuses` and
+`settings.deliveredStatuses` (arrays). For PrestaShop the connector factory adds these states to the poll filter
+(`paidStateIds`), so a state id that is not numeric is ignored there. A delivered status on an order the state machine
+cannot complete (for example still `imported`) is logged and skipped. Delivery is not derived from the AW supplier poll:
+AW reports dispatch, not delivery.
 
 ## 5. Manual tracking (until S0.1 is solved)
 
@@ -175,8 +196,8 @@ map to it (codes are assumptions, see S0.8).
 
 - Health: `GET /api/health/live` and `/api/health/ready` on each app.
 - Every outbound call is in `integration_request_log` (method, URL without secrets, status, duration, correlation id);
-  secrets are redacted. There is **no automatic 30 day purge yet**: delete old rows by hand if the table grows
-  (`DELETE FROM integration_request_log WHERE "createdAt" < now() - interval '30 days';`).
+  secrets are redacted. Rows older than 30 days are purged daily (04:30, job `job:purge_request_logs` on
+  `order-maintenance-queue`, one job per tenant, `RUNTIME_DEFAULTS.REQUEST_LOG_RETENTION_DAYS`).
 - `sync_run` is the audit of each sync (counters, status `SUCCEEDED` / `PARTIAL` / `FAILED`, error summary). A `PARTIAL`
   run records the failed page; the next run reprocesses everything idempotently.
 - Dashboard: last run per job, alerts (margin blocked, missing products, Temu deadlines, failed orders).

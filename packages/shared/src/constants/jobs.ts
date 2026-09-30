@@ -11,6 +11,7 @@ export const JOB_PATTERNS = {
   PUSH_SHIPMENT: 'job:push_shipment',
   SCAN_SHIP_BY_DEADLINES: 'job:scan_ship_by_deadlines',
   PURGE_ORDER_PII: 'job:purge_order_pii',
+  PURGE_REQUEST_LOGS: 'job:purge_request_logs',
   PUBLISH_LISTING: 'job:publish_listing',
   SYNC_LISTING_STOCK_PRICE: 'job:sync_listing_stock_price',
   POLL_LISTING_REVIEW: 'job:poll_listing_review',

@@ -83,6 +83,14 @@ export class PimEnqueueService {
     return this.forTenants(this.maintenanceQueue, JOB_PATTERNS.PURGE_ORDER_PII);
   }
 
+  /** Section 5: IntegrationRequestLog retention (30 days). */
+  enqueueRequestLogPurge(): Promise<void> {
+    return this.forTenants(
+      this.maintenanceQueue,
+      JOB_PATTERNS.PURGE_REQUEST_LOGS,
+    );
+  }
+
   private async forTenants(queue: Queue, job: string): Promise<void> {
     const tenants = await this.db.tenant.findMany({
       where: { deletedAt: null },

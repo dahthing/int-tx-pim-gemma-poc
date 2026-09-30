@@ -43,7 +43,7 @@ import {
   type RawOrder,
   type RawShipping,
 } from './temu-api';
-import { AWAITING_SHIPMENT } from './order-import';
+import { AWAITING_SHIPMENT, TRACKED_ORDER_STATUSES } from './order-import';
 
 export interface TemuEuConnectorConfig {
   /** EU gateway host, e.g. https://... (never hardcoded). */
@@ -69,6 +69,7 @@ export interface PriceReviewOutcome {
 }
 
 const PAGE_SIZE = 20;
+const NO_SHIPPING: RawShipping = { name: '', addressLine1: '', postCode: '', city: '', countryCode: '' };
 
 export class TemuEuConnector implements IChannelConnector {
   readonly code = 'temu-eu';
@@ -167,11 +168,12 @@ export class TemuEuConnector implements IChannelConnector {
     const skipped: BatchItemResult[] = [];
     const toSend: PriceUpdate[] = [];
     for (const i of items) {
-      if (this.pending.isPending(i.externalId)) {
+      if (await this.pending.isPending(i.externalId)) {
         skipped.push({ externalId: i.externalId, ok: true, skipped: true, error: 'price change pending Temu review' });
       } else toSend.push(i);
     }
     if (toSend.length === 0) return summarize(skipped);
+    const toMark: PriceUpdate[] = [];
     const sent = await this.batch(
       TEMU_METHODS.priceUpdate,
       { items: toSend.map((i) => ({ goodsId: i.externalId, skuId: i.externalVariantId, price: i.priceNet })) },
@@ -179,16 +181,17 @@ export class TemuEuConnector implements IChannelConnector {
       (r) => {
         if (r.success && r.pendingReview) {
           const p = toSend.find((i) => i.externalId === r.goodsId);
-          if (p) this.pending.markPending(p.externalId, p.priceNet, this.now());
+          if (p) toMark.push(p);
         }
       },
     );
+    for (const p of toMark) await this.pending.markPending(p.externalId, p.priceNet, this.now());
     return summarize([...sent.results, ...skipped]);
   }
 
   /** Resolves pending price changes once Temu has reviewed them. */
   async pollPendingPrices(): Promise<PriceReviewOutcome[]> {
-    const ids = this.pending.pendingIds();
+    const ids = await this.pending.pendingIds();
     if (ids.length === 0) return [];
     const r = await this.api.call<{ results: Array<{ goodsId: string; status: string; reason?: string }> }>(
       TEMU_METHODS.priceReview,
@@ -199,7 +202,7 @@ export class TemuEuConnector implements IChannelConnector {
       if (x.status === 'APPROVED') out.push({ externalId: x.goodsId, outcome: 'approved' });
       else if (x.status === 'REJECTED') out.push({ externalId: x.goodsId, outcome: 'rejected', reason: x.reason });
       else continue;
-      this.pending.resolve(x.goodsId);
+      await this.pending.resolve(x.goodsId);
     }
     return out;
   }
@@ -212,14 +215,19 @@ export class TemuEuConnector implements IChannelConnector {
     const pageNo = cursor?.page ?? 1;
     const pageSize = cursor?.perPage ?? PAGE_SIZE;
     const list = await this.api.call<{ total: number; orders: RawOrder[] }>(TEMU_METHODS.orderList, {
-      status: AWAITING_SHIPMENT,
+      statuses: TRACKED_ORDER_STATUSES,
       updatedSince: Math.floor(since.getTime() / 1000),
       pageNo,
       pageSize,
     });
     const items: ChannelOrderRaw[] = [];
     for (const o of list.orders) {
-      const ship = await this.api.call<RawShipping>(TEMU_METHODS.shippingInfoDecrypt, { orderSn: o.orderSn });
+      if (!(TRACKED_ORDER_STATUSES as readonly string[]).includes(o.status)) continue;
+      // Shipping PII is decrypted only for orders still to be imported; cancelled / delivered ones are status-only.
+      const ship =
+        o.status === AWAITING_SHIPMENT
+          ? await this.api.call<RawShipping>(TEMU_METHODS.shippingInfoDecrypt, { orderSn: o.orderSn })
+          : NO_SHIPPING;
       items.push(parseOrder(o, ship));
     }
     return {

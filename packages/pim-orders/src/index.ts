@@ -10,3 +10,4 @@ export * from './shipment.service';
 export * from './order-cancellation.service';
 export * from './listing-sync.service';
 export * from './pim-orders.module';
+export * from './channel-status';

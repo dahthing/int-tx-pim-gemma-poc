@@ -31,7 +31,8 @@ export type ModelName =
   | 'syncRun'
   | 'priceRule'
   | 'auditEvent'
-  | 'integrationRequestLog';
+  | 'integrationRequestLog'
+  | 'channelPendingPrice';
 export type MockDb = Record<ModelName, MockModel> & { $transaction: jest.Mock };
 
 /** Auto-creating jest mock of DatabaseService: db.model.method is a jest.fn(). */

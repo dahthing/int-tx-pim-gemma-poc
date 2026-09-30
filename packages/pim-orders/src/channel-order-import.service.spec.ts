@@ -23,6 +23,9 @@ describe('ChannelOrderImportService', () => {
   let connector: { listOrdersSince: jest.Mock };
   let resolver: { resolve: jest.Mock };
   let enqueuer: { enqueueRouting: jest.Mock };
+  let cancellation: { handleChannelCancellation: jest.Mock };
+  let shipments: { markDelivered: jest.Mock };
+  let states: { canReach: jest.Mock };
   let svc: ChannelOrderImportService;
   const channel = { id: 'ch1', tenantId: TENANT, code: 'prestashop9', settings: { keep: 1 } };
 
@@ -31,12 +34,16 @@ describe('ChannelOrderImportService', () => {
     connector = { listOrdersSince: jest.fn() };
     resolver = { resolve: jest.fn().mockResolvedValue(connector) };
     enqueuer = { enqueueRouting: jest.fn().mockResolvedValue(undefined) };
+    cancellation = { handleChannelCancellation: jest.fn().mockResolvedValue({ action: 'cancel' }) };
+    shipments = { markDelivered: jest.fn().mockResolvedValue(undefined) };
+    states = { canReach: jest.fn().mockReturnValue(true) };
+    db.channelOrder.update.mockResolvedValue({});
     db.channel.findFirst.mockResolvedValue(channel);
     db.channelOrder.findUnique.mockResolvedValue(null);
     db.channelOrder.create.mockImplementation(async ({ data }) => ({ id: `id-${data.externalId}`, ...data }));
     db.product.findMany.mockResolvedValue([{ sku: 'SKU1' }]);
     connector.listOrdersSince.mockResolvedValue({ items: [order('E1')], nextCursor: null });
-    svc = new ChannelOrderImportService(asDb(db), resolver, keyProvider, enqueuer);
+    svc = new ChannelOrderImportService(asDb(db), resolver, keyProvider, enqueuer, cancellation as never, shipments as never, states as never);
   });
 
   it('throws NotFound for an unknown / foreign channel (tenant scoped lookup)', async () => {
@@ -154,5 +161,92 @@ describe('ChannelOrderImportService', () => {
     const res = await svc.importChannel(TENANT, 'ch1');
     expect(res).toMatchObject({ fetched: 2, imported: 1, failed: 1 });
     expect(db.channel.update).not.toHaveBeenCalled();
+  });
+  describe('channel status changes of known orders', () => {
+    const known = (over: Record<string, unknown> = {}) => ({ id: 'co1', externalId: 'E1', externalStatus: '2', internalStatus: 'SUPPLIER_SUBMITTED', ...over });
+
+    it('FR-ORD-001 AC2: a known order whose external status became cancelled goes through the cancellation service', async () => {
+      db.channelOrder.findUnique.mockResolvedValue(known());
+      connector.listOrdersSince.mockResolvedValue({ items: [order('E1', { externalStatus: '6' })], nextCursor: null });
+      const res = await svc.importChannel(TENANT, 'ch1');
+      expect(cancellation.handleChannelCancellation).toHaveBeenCalledWith(TENANT, 'co1');
+      expect(db.channelOrder.update).toHaveBeenCalledWith({ where: { id: 'co1' }, data: { externalStatus: '6' } });
+      expect(db.channelOrder.create).not.toHaveBeenCalled();
+      expect(res).toMatchObject({ fetched: 1, cancelled: 1, duplicates: 0, imported: 0, failed: 0 });
+    });
+
+    it('uses the Temu defaults and channel settings overrides', async () => {
+      db.channel.findFirst.mockResolvedValue({ ...channel, code: 'temu-eu', settings: {} });
+      db.channelOrder.findUnique.mockResolvedValue(known({ externalStatus: 'AWAITING_SHIPMENT' }));
+      connector.listOrdersSince.mockResolvedValue({ items: [order('E1', { externalStatus: 'CANCELLED' })], nextCursor: null });
+      await svc.importChannel(TENANT, 'ch1');
+      expect(cancellation.handleChannelCancellation).toHaveBeenCalledTimes(1);
+
+      cancellation.handleChannelCancellation.mockClear();
+      db.channel.findFirst.mockResolvedValue({ ...channel, settings: { cancelledStatuses: ['99'] } });
+      db.channelOrder.findUnique.mockResolvedValue(known());
+      connector.listOrdersSince.mockResolvedValue({ items: [order('E1', { externalStatus: '99' })], nextCursor: null });
+      await svc.importChannel(TENANT, 'ch1');
+      expect(cancellation.handleChannelCancellation).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not re-handle a cancellation whose status is already stored', async () => {
+      db.channelOrder.findUnique.mockResolvedValue(known({ externalStatus: '6', internalStatus: 'MANUAL_REVIEW' }));
+      connector.listOrdersSince.mockResolvedValue({ items: [order('E1', { externalStatus: '6' })], nextCursor: null });
+      const res = await svc.importChannel(TENANT, 'ch1');
+      expect(cancellation.handleChannelCancellation).not.toHaveBeenCalled();
+      expect(db.channelOrder.update).not.toHaveBeenCalled();
+      expect(res.duplicates).toBe(1);
+    });
+
+    it('keeps the stored status and fails the item (cursor not advanced) when the cancellation throws, so the next poll retries', async () => {
+      db.channelOrder.findUnique.mockResolvedValue(known());
+      cancellation.handleChannelCancellation.mockRejectedValue(new Error('aw down'));
+      connector.listOrdersSince.mockResolvedValue({ items: [order('E1', { externalStatus: '6' })], nextCursor: null });
+      const res = await svc.importChannel(TENANT, 'ch1');
+      expect(res.failed).toBe(1);
+      expect(db.channelOrder.update).not.toHaveBeenCalled();
+      expect(db.channel.update).not.toHaveBeenCalled();
+    });
+
+    it('FR-TEMU-004 AC2: a known order that became delivered is marked delivered (starts the PII purge clock)', async () => {
+      db.channel.findFirst.mockResolvedValue({ ...channel, code: 'temu-eu', settings: {} });
+      db.channelOrder.findUnique.mockResolvedValue(known({ externalStatus: 'SHIPPED', internalStatus: 'TRACKING_PUSHED' }));
+      connector.listOrdersSince.mockResolvedValue({ items: [order('E1', { externalStatus: 'DELIVERED' })], nextCursor: null });
+      const res = await svc.importChannel(TENANT, 'ch1');
+      expect(shipments.markDelivered).toHaveBeenCalledWith(TENANT, 'co1', expect.any(Date));
+      expect(db.channelOrder.update).toHaveBeenCalledWith({ where: { id: 'co1' }, data: { externalStatus: 'DELIVERED' } });
+      expect(res).toMatchObject({ delivered: 1, failed: 0 });
+    });
+
+    it('skips a delivery the state machine cannot reach (logged, status still stored)', async () => {
+      states.canReach.mockReturnValue(false);
+      db.channelOrder.findUnique.mockResolvedValue(known({ internalStatus: 'IMPORTED' }));
+      connector.listOrdersSince.mockResolvedValue({ items: [order('E1', { externalStatus: '5' })], nextCursor: null });
+      const res = await svc.importChannel(TENANT, 'ch1');
+      expect(shipments.markDelivered).not.toHaveBeenCalled();
+      expect(db.channelOrder.update).toHaveBeenCalledWith({ where: { id: 'co1' }, data: { externalStatus: '5' } });
+      expect(res).toMatchObject({ delivered: 0, duplicates: 1, failed: 0 });
+    });
+
+    it('just records an ordinary status change of a known order', async () => {
+      db.channelOrder.findUnique.mockResolvedValue(known());
+      connector.listOrdersSince.mockResolvedValue({ items: [order('E1', { externalStatus: '3' })], nextCursor: null });
+      const res = await svc.importChannel(TENANT, 'ch1');
+      expect(db.channelOrder.update).toHaveBeenCalledWith({ where: { id: 'co1' }, data: { externalStatus: '3' } });
+      expect(cancellation.handleChannelCancellation).not.toHaveBeenCalled();
+      expect(res.duplicates).toBe(1);
+    });
+
+    it('never imports an unknown order that is already cancelled or delivered on the channel', async () => {
+      connector.listOrdersSince.mockResolvedValue({
+        items: [order('E1', { externalStatus: '6' }), order('E2', { externalStatus: '5' })],
+        nextCursor: null,
+      });
+      const res = await svc.importChannel(TENANT, 'ch1');
+      expect(db.channelOrder.create).not.toHaveBeenCalled();
+      expect(enqueuer.enqueueRouting).not.toHaveBeenCalled();
+      expect(res).toMatchObject({ fetched: 2, imported: 0, ignored: 2 });
+    });
   });
 });

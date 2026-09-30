@@ -31,6 +31,7 @@ import { PimJobs } from './pim-jobs';
 import { BullChannelSyncEnqueuer } from './queue/channel-sync.enqueuer';
 import { ConnectorListingStockZeroer } from './queue/listing-stock.zeroer';
 import { BullOrderRoutingEnqueuer } from './queue/order-routing.enqueuer';
+import { RequestLogRetentionService } from './adapters/request-log-retention.service';
 import { SupplierScope } from './supplier-scope';
 
 export interface PimRuntimeOptions {
@@ -47,6 +48,8 @@ export interface PimRuntimeOptions {
 export const PIM_RUNTIME_QUEUES = [
   QUEUES.EMAIL,
   QUEUES.ORDER_ROUTING,
+  QUEUES.ORDER_IMPORT,
+  QUEUES.ORDER_STATUS,
   QUEUES.LISTING_SYNC,
   QUEUES.CATALOG_SYNC,
   QUEUES.STOCK_SYNC,
@@ -62,6 +65,7 @@ const ADMIN_SERVICES = [
   DashboardService,
   SettingsService,
   SyncTriggerService,
+  RequestLogRetentionService,
 ] as const;
 
 /** Adapters for every pim-catalog / pim-orders port. Global so both feature modules (and the admin services) see them. */

@@ -16,3 +16,14 @@ export interface SupplierSyncJobData {
   tenantId: string;
   supplierId: string;
 }
+
+/** Payload of the tenant wide jobs (order status poll, maintenance). */
+export interface TenantJobData {
+  tenantId: string;
+}
+
+/** Payload of the per channel jobs (order import, listing review poll). */
+export interface ChannelJobData {
+  tenantId: string;
+  channelId: string;
+}

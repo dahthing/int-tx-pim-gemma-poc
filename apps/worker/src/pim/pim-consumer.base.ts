@@ -29,7 +29,7 @@ export abstract class PimConsumerBase extends WorkerHost {
     schema: S,
     fn: (data: z.output<S>) => Promise<unknown>,
   ): Promise<void> {
-    const data = schema.parse(job.data) as z.output<S>;
+    const data = schema.parse(job.data);
     return this.cls.run(async () => {
       if (data.correlationId) {
         this.cls.set(CLS_CORRELATION_ID, data.correlationId);

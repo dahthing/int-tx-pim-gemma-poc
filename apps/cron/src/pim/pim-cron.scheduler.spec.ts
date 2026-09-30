@@ -13,6 +13,10 @@ describe('PIM_SCHEDULES defaults', () => {
     expect(byName['temu-order-import']!.cron).toBe('*/10 * * * *');
     expect(byName['ship-by-deadline-scan']!.cron).toBe('0 * * * *');
     expect(byName['pii-purge']!.cron).toBe('0 4 * * *');
+    expect(byName['request-log-purge']!.cron).toBe('30 4 * * *');
+    expect(byName['request-log-purge']!.configKey).toBe(
+      'CRON_REQUEST_LOG_PURGE',
+    );
     expect(byName['supplier-order-status-poll']).toBeDefined();
     expect(byName['listing-review-poll']).toBeDefined();
   });

@@ -20,6 +20,7 @@ function build() {
     run: jest.fn((_t: string, _s: string, fn: () => Promise<unknown>) => fn()),
     runForTenant: jest.fn((_t: string, fn: () => Promise<unknown>) => fn()),
   };
+  const requestLogs = { purge: jest.fn().mockResolvedValue({ deleted: 2 }) };
   const jobs = new PimJobs(
     ingestion as never,
     stockSync as never,
@@ -29,6 +30,7 @@ function build() {
     shipments as never,
     listings as never,
     scope as never,
+    requestLogs as never,
   );
   return {
     jobs,
@@ -40,6 +42,7 @@ function build() {
     shipments,
     listings,
     scope,
+    requestLogs,
   };
 }
 
@@ -83,6 +86,15 @@ describe('PimJobs', () => {
       undefined,
       undefined,
     );
+  });
+
+  it('purges old integration request logs (section 5 retention)', async () => {
+    const { jobs, requestLogs } = build();
+    const now = new Date('2026-01-01T00:00:00Z');
+    await expect(jobs.purgeRequestLogs('t', now, 10)).resolves.toEqual({ deleted: 2 });
+    expect(requestLogs.purge).toHaveBeenCalledWith('t', now, 10);
+    await jobs.purgeRequestLogs('t');
+    expect(requestLogs.purge).toHaveBeenLastCalledWith('t', undefined, undefined);
   });
 
   it('delegates listing jobs', async () => {
