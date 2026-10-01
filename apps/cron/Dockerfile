@@ -1,15 +1,15 @@
 # syntax=docker/dockerfile:1.9
 #
 # Build from the REPO ROOT (the context needs the whole workspace for `turbo prune`):
-#   docker build -f apps/auth/Dockerfile -t pim-auth .
+#   docker build -f apps/cron/Dockerfile -t pim-cron .
 #
-# Stages: pruner (turbo prune: only auth's workspace deps) -> builder (install,
+# Stages: pruner (turbo prune: only cron's workspace deps) -> builder (install,
 # prisma generate, compile, pnpm deploy --prod) -> runtime (prod deps only, non-root).
 # No secrets are baked in: configuration comes from env vars at `docker run`.
 
 ARG NODE_IMAGE=node:22-alpine
 
-# --- pruner: reduce the monorepo to auth + its workspace dependencies -----------
+# --- pruner: reduce the monorepo to cron + its workspace dependencies -----------
 FROM ${NODE_IMAGE} AS pruner
 WORKDIR /usr/src/app
 # Keep in sync with the turbo version in pnpm-lock.yaml / root package.json.
@@ -19,7 +19,7 @@ RUN --mount=type=secret,id=extra_ca,target=/tmp/extra-ca.pem,required=false \
     if [ -s /tmp/extra-ca.pem ]; then export NODE_EXTRA_CA_CERTS=/tmp/extra-ca.pem; fi; \
     npm install --global --no-fund --no-audit turbo@${TURBO_VERSION}
 COPY . .
-RUN turbo prune auth --docker
+RUN turbo prune cron --docker
 
 # --- builder: install, generate Prisma client, compile --------------------------
 FROM ${NODE_IMAGE} AS builder
@@ -46,27 +46,27 @@ COPY --from=pruner /usr/src/app/out/full/ .
 # package as a dependency, so `turbo prune` leaves it out. It is JSON only.
 COPY packages/typescript-config ./packages/typescript-config
 # turbo's "build" task depends on db:generate (Prisma client) and ^build.
-RUN pnpm exec turbo run build --filter=auth
+RUN pnpm exec turbo run build --filter=cron
 
-# Self-contained production tree built from the lockfile (no registry re-resolve): prod deps + built workspace packages in /prod/auth.
+# Self-contained production tree built from the lockfile (no registry re-resolve): prod deps + built workspace packages in /prod/cron.
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
     npm_config_inject_workspace_packages=true \
-    pnpm --filter=auth deploy --prod /prod/auth
+    pnpm --filter=cron deploy --prod /prod/cron
 
 # --- runtime: production dependencies only, non-root ----------------------------
 FROM ${NODE_IMAGE} AS runtime
 ENV NODE_ENV=production \
-    PORT=3000
+    PORT=3200
 WORKDIR /usr/src/app
 
 RUN addgroup --system --gid 1001 nodejs \
  && adduser  --system --uid 1001 --ingroup nodejs nestjs
 
-COPY --from=builder --chown=nestjs:nodejs /prod/auth/node_modules ./node_modules
-COPY --from=builder --chown=nestjs:nodejs /usr/src/app/apps/auth/dist ./dist
+COPY --from=builder --chown=nestjs:nodejs /prod/cron/node_modules ./node_modules
+COPY --from=builder --chown=nestjs:nodejs /usr/src/app/apps/cron/dist ./dist
 
 USER nestjs
-EXPOSE 3000
+EXPOSE 3200
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
   CMD wget -q -O /dev/null "http://127.0.0.1:${PORT}/api/health/live" || exit 1

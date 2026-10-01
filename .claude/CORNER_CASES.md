@@ -200,6 +200,12 @@ See `openspec/changes/update-monorepo-dependencies/design.md` (D5) for the full 
 
 **Also:** the root `update-packages` script runs `npx npm-check-updates --workspaces --root -u`, so it rewrites the root manifest **and** every `apps/*` / `packages/*` manifest (all read the same `.ncurc.json`). A bare `ncu -u` only touches the root `package.json` — don't drop the flags.
 
+### Docker images: `turbo prune` drops `packages/typescript-config`, and `pnpm deploy --legacy` re-resolves from the registry
+
+**Symptom:** inside `docker build`, `prisma generate` in `@repo/database` fails with `File '../typescript-config/nestjs.json' not found`, because `tsconfig.json` extends it by relative path and `package.json` never declares `@repo/typescript-config`, so `turbo prune` leaves it out. Separately, `pnpm deploy --prod --legacy` ignores the lockfile and hangs/ drifts on the registry.
+
+**Fix:** the app Dockerfiles `COPY packages/typescript-config` after the pruned tree, and run `npm_config_inject_workspace_packages=true pnpm --filter=<app> deploy --prod /prod/<app>` (lockfile-based, offline from the BuildKit store). Behind a TLS-intercepting proxy pass `--secret id=extra_ca,src=<ca.pem>`.
+
 ---
 
 ## Testing

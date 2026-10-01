@@ -27,3 +27,15 @@ docker
 tasks
 *.md
 
+
+# Local build/test artefacts
+**/.turbo
+**/.angular
+**/coverage
+**/logs
+logs
+.serena
+.agents
+.claude
+.vscode
+openspec

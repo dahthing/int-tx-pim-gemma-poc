@@ -185,7 +185,7 @@ Criar um ficheiro `.env.production` para cada app. Em produção, o Docker deve 
 
 ---
 
-### `apps/web` (porta 8080 dentro do container — sem `.env` em runtime)
+### `apps/web` (porta 8080 dentro do container — sem `.env` em runtime; `API_UPSTREAM` configura o proxy `/api/`)
 
 O Angular não lê variáveis de ambiente em runtime — a configuração é compilada no **build**, via `apps/web/src/environments/environment.prod.ts` (trocado por `angular.json`'s `fileReplacements` na build `production`):
 
@@ -213,48 +213,23 @@ As seguintes variáveis **têm de ter o mesmo valor** em todos os serviços Nest
 
 ---
 
-## 5. Configurar o `docker-compose.yaml` para Produção
+## 5. Docker Compose (perfil `apps`)
 
-O ficheiro `docker-compose.yaml` existente tem os serviços das apps comentados (usados apenas em dev). Para produção, descomentar e ajustar conforme necessário.
+O `docker-compose.yaml` define as apps `api`, `worker`, `cron`, `auth`, `notifications` e `web` (mais o one-shot `migrate`)
+sob o perfil `apps`; `docker compose up` sem perfil continua a arrancar só a infraestrutura (postgres, redis, mongo, minio, grafana stack).
 
-Exemplo mínimo de configuração de produção para o serviço `auth`:
-
-```yaml
-auth:
-  image: <app-name>-auth:latest # ou build com target: production
-  build:
-    context: .
-    dockerfile: ./apps/auth/Dockerfile
-    target: production
-  restart: unless-stopped
-  ports:
-    - '3000:3000'
-  env_file:
-    - ./apps/auth/.env
-  depends_on:
-    postgres:
-      condition: service_healthy
-    redis:
-      condition: service_healthy
-    mongo:
-      condition: service_healthy
-  networks:
-    - app
-  healthcheck:
-    test:
-      [
-        'CMD-SHELL',
-        'wget -qO /dev/null http://localhost:3000/api/auth/ok || exit 1',
-      ]
-    interval: 30s
-    timeout: 10s
-    retries: 3
-    start_period: 30s
-```
-
-Repetir o padrão para `api` (porta 3100), `cron` (porta 3200), `notifications` (porta 3300), `worker` (porta 3400) e `web` (porta 8080 → exposta conforme o reverse proxy).
-
-> Para os volumes do PostgreSQL e MongoDB em produção, substituir os caminhos absolutos locais (`/Volumes/SSD-DEV/...`) por caminhos no servidor, por exemplo `/data/<app-name>/postgres` e `/data/<app-name>/mongo`.
+- **Imagens**: `apps/<app>/Dockerfile`, build a partir da raiz do repositório (`docker build -f apps/api/Dockerfile .`).
+  Multi-stage: `turbo prune <app> --docker` (só as dependências workspace dessa app) -> `pnpm install --frozen-lockfile` ->
+  `turbo run build` (gera o cliente Prisma e compila) -> `pnpm deploy --prod` a partir do lockfile -> runtime `node:22-alpine`
+  só com dependências de produção, utilizador não-root (uid 1001), `HEALTHCHECK` em `/api/health/live`. A `web` usa
+  `nginxinc/nginx-unprivileged` (porta 8080, healthcheck em `/`). Nenhum segredo é incluído na imagem.
+- **Configuração**: cada serviço lê `apps/<app>/.env` (copiar de `.env.example`; ficheiro opcional) e o compose sobrepõe
+  `DATABASE_URL`, `REDIS_*`, `MONGO_URI`, `PIM_S3_ENDPOINT` com os hostnames dos serviços (`postgres`, `redis`, `mongo`, `minio`).
+  As credenciais usadas nessas URLs vêm de `POSTGRES_USER/PASSWORD/DB`, `MONGO_INITDB_ROOT_USERNAME/PASSWORD/DATABASE`,
+  `PIM_S3_ACCESS_KEY/SECRET_KEY` (shell ou `.env` na raiz; os defaults coincidem com os `*.env.example`).
+- **Portas**: auth 3000, api 3100, cron 3200, notifications 3300, worker 3400, web 8080.
+- **Migrações**: o serviço `migrate` (stage `migrate` do Dockerfile da api, corre `prisma migrate deploy`) corre antes das apps
+  (`depends_on: service_completed_successfully`).
 
 ---
 
@@ -264,17 +239,13 @@ Repetir o padrão para `api` (porta 3100), `cron` (porta 3200), `notifications` 
 
 ```bash
 # Build de todas as apps em modo produção
-docker compose build --no-cache
+docker compose --profile apps build --no-cache
 ```
 
 Ou por app individual:
 
 ```bash
-docker compose build auth
-docker compose build api
-docker compose build notifications
-docker compose build worker
-docker compose build web
+docker compose --profile apps build auth api cron notifications worker web
 ```
 
 ### 6.2 Iniciar infraestrutura
@@ -289,7 +260,8 @@ docker compose ps
 
 ### 6.3 Correr migrações da base de dados
 
-As migrações têm de ser corridas **antes** de iniciar as apps, a partir da máquina com acesso à BD:
+Com o compose, `docker compose --profile apps run --rm migrate` aplica as migrações (também corre automaticamente antes das apps).
+Alternativa, a partir de uma máquina com acesso à BD:
 
 ```bash
 # Com DATABASE_URL apontado para a BD de produção
@@ -305,7 +277,7 @@ pnpm db:seed       # Criar utilizador admin (usa ADMIN_EMAIL e ADMIN_PASSWORD)
 ### 6.4 Iniciar os serviços
 
 ```bash
-docker compose up -d auth api notifications worker web
+docker compose --profile apps up -d --build
 ```
 
 ### 6.5 Verificar saúde dos serviços

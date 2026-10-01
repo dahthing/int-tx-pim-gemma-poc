@@ -1,55 +1,74 @@
 # syntax=docker/dockerfile:1.9
+#
+# Build from the REPO ROOT (the context needs the whole workspace for `turbo prune`):
+#   docker build -f apps/worker/Dockerfile -t pim-worker .
+#
+# Stages: pruner (turbo prune: only worker's workspace deps) -> builder (install,
+# prisma generate, compile, pnpm deploy --prod) -> runtime (prod deps only, non-root).
+# No secrets are baked in: configuration comes from env vars at `docker run`.
 
-# ─── Build stage ────────────────────────────────────────────────────────────────
-FROM node:24-alpine AS development
+ARG NODE_IMAGE=node:22-alpine
 
-ENV CI=true
-ENV NODE_ENV=development
-ENV PNPM_HOME=/pnpm
-ENV PATH=$PNPM_HOME:$PATH
-
+# --- pruner: reduce the monorepo to worker + its workspace dependencies -----------
+FROM ${NODE_IMAGE} AS pruner
 WORKDIR /usr/src/app
+# Keep in sync with the turbo version in pnpm-lock.yaml / root package.json.
+ARG TURBO_VERSION=2.11.5
+# Optional corporate/sandbox proxy CA: --secret id=extra_ca,src=/path/ca.pem (never stored in a layer).
+RUN --mount=type=secret,id=extra_ca,target=/tmp/extra-ca.pem,required=false \
+    if [ -s /tmp/extra-ca.pem ]; then export NODE_EXTRA_CA_CERTS=/tmp/extra-ca.pem; fi; \
+    npm install --global --no-fund --no-audit turbo@${TURBO_VERSION}
+COPY . .
+RUN turbo prune worker --docker
 
-# Corepack picks up the pnpm version from the root package.json "packageManager" field.
+# --- builder: install, generate Prisma client, compile --------------------------
+FROM ${NODE_IMAGE} AS builder
+ENV CI=true \
+    PNPM_HOME=/pnpm \
+    TURBO_TELEMETRY_DISABLED=1 \
+    DO_NOT_TRACK=1
+ENV PATH=$PNPM_HOME:$PATH
+WORKDIR /usr/src/app
+# Corepack picks pnpm 10.33.0 from the root package.json "packageManager" field.
 RUN corepack enable
 
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json ./
-
-COPY packages/database/package.json          ./packages/database/
-COPY packages/eslint-config/package.json     ./packages/eslint-config/
-COPY packages/mail/package.json              ./packages/mail/
-COPY packages/shared/package.json            ./packages/shared/
-COPY packages/shared-types/package.json      ./packages/shared-types/
-COPY packages/trpc/package.json              ./packages/trpc/
-COPY packages/typescript-config/package.json ./packages/typescript-config/
-COPY apps/worker/package.json                ./apps/worker/
-
+# Manifests + pruned lockfile first: this layer only changes with dependencies.
+COPY --from=pruner /usr/src/app/out/json/ .
+COPY --from=pruner /usr/src/app/out/pnpm-lock.yaml ./pnpm-lock.yaml
+COPY patches ./patches
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
+    --mount=type=secret,id=extra_ca,target=/tmp/extra-ca.pem,required=false \
+    if [ -s /tmp/extra-ca.pem ]; then export NODE_EXTRA_CA_CERTS=/tmp/extra-ca.pem; fi; \
     pnpm install --frozen-lockfile
 
-COPY packages ./packages
-COPY apps/worker ./apps/worker
+COPY --from=pruner /usr/src/app/out/full/ .
+# Several tsconfigs extend ../typescript-config/*.json by relative path without declaring the
+# package as a dependency, so `turbo prune` leaves it out. It is JSON only.
+COPY packages/typescript-config ./packages/typescript-config
+# turbo's "build" task depends on db:generate (Prisma client) and ^build.
+RUN pnpm exec turbo run build --filter=worker
 
-RUN pnpm exec turbo db:generate
-RUN pnpm exec turbo build --filter=worker
+# Self-contained production tree built from the lockfile (no registry re-resolve): prod deps + built workspace packages in /prod/worker.
+RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
+    npm_config_inject_workspace_packages=true \
+    pnpm --filter=worker deploy --prod /prod/worker
 
-# Produce a self-contained production node_modules under /prod/worker.
-RUN pnpm --filter=worker deploy --prod --legacy /prod/worker
-
-# ─── Production stage ───────────────────────────────────────────────────────────
-FROM node:24-alpine AS production
-
-ENV NODE_ENV=production
-
+# --- runtime: production dependencies only, non-root ----------------------------
+FROM ${NODE_IMAGE} AS runtime
+ENV NODE_ENV=production \
+    PORT=3400
 WORKDIR /usr/src/app
 
-# Least-privilege: run as non-root.
 RUN addgroup --system --gid 1001 nodejs \
- && adduser  --system --uid 1001 nestjs
+ && adduser  --system --uid 1001 --ingroup nodejs nestjs
 
-COPY --from=development --chown=nestjs:nodejs /prod/worker/node_modules ./node_modules
-COPY --from=development --chown=nestjs:nodejs /usr/src/app/apps/worker/dist ./dist
+COPY --from=builder --chown=nestjs:nodejs /prod/worker/node_modules ./node_modules
+COPY --from=builder --chown=nestjs:nodejs /usr/src/app/apps/worker/dist ./dist
 
 USER nestjs
+EXPOSE 3400
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+  CMD wget -q -O /dev/null "http://127.0.0.1:${PORT}/api/health/live" || exit 1
 
 CMD ["node", "dist/main.js"]

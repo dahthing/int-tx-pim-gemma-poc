@@ -36,11 +36,22 @@ Node must be the `.nvmrc` version for `apps/web` (`nvm use`).
 
 ### Running the apps
 
-`docker-compose.yaml` only runs infrastructure. The commented-out Next.js-era service blocks (traefik, auth,
-notifications, worker, web) were removed: the app Dockerfiles still copy the deleted `packages/trpc` and none of the
-`pim-*` / `connector-*` packages, so they do not build, and `apps/cron` has no Dockerfile at all. Run the apps with
-`pnpm dev` (or PM2, see `DEPLOY-PM2.md`). Adding containers for api, worker, cron and web means fixing those Dockerfiles
-first (workspace manifests to copy, cron Dockerfile, health ports 3100 / 3400 / 3200) and is not done.
+Two options. `pnpm dev` runs them on the host; PM2 is in `DEPLOY-PM2.md`. Containers are opt-in through the compose
+profile `apps` (plain `docker compose up` / `pnpm docker:up` still starts infrastructure only):
+
+```bash
+docker compose --profile apps up -d --build   # migrate (one-shot) + api, worker, cron, auth, notifications, web
+docker compose --profile apps ps
+curl http://localhost:3100/api/health/live    # api; worker 3400, cron 3200, auth 3000, notifications 3300; web http://localhost:8080
+```
+
+Each `apps/<app>/Dockerfile` is built from the repo root (`docker build -f apps/api/Dockerfile .`): `turbo prune` keeps
+only that app's workspace packages, the Prisma client is generated in the build stage, the runtime stage holds
+production dependencies only and runs as a non-root user. Per-app settings come from `apps/<app>/.env` (optional);
+compose overrides the DB / Redis / Mongo / MinIO hosts with the service names. The `migrate` service runs
+`prisma migrate deploy` before the apps start. No secrets are baked into images. If the build runs behind a TLS-intercepting
+proxy, pass its CA with `docker build --secret id=extra_ca,src=/path/ca.pem ...` (compose: `secrets`, or build the images
+with `docker build` and tag them `pim-<app>:local`).
 
 ### Environment variables
 

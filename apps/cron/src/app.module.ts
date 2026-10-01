@@ -14,6 +14,7 @@ import { PimEnqueueService } from './pim/pim-enqueue.service';
     }),
     ScheduleModule.forRoot(),
     QueueModule.registerQueues([
+      QUEUES.EMAIL,
       QUEUES.CATALOG_SYNC,
       QUEUES.STOCK_SYNC,
       QUEUES.ORDER_IMPORT,

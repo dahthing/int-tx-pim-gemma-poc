@@ -3,9 +3,157 @@ networks:
     driver: bridge
   edge:
     driver: bridge
+
+# Shared wiring for the app containers (profile `apps`). Per-app settings come from the git-ignored
+# apps/<app>/.env (copy the .env.example next to it); the infra hostnames/credentials below override the
+# localhost values those files carry for host-run `pnpm dev`. Set POSTGRES_USER / POSTGRES_PASSWORD /
+# MONGO_INITDB_ROOT_* (same values as docker/postgres.env and docker/mongo.env) in a root .env or the shell;
+# the defaults match the *.env.example files. Nothing secret is baked into any image.
+x-app-environment: &app-environment
+  NODE_ENV: production
+  DATABASE_URL: postgres://${POSTGRES_USER:-nestjs}:${POSTGRES_PASSWORD:-change-me}@postgres:5432/${POSTGRES_DB:-nestjs}?schema=public
+  REDIS_HOST: redis
+  REDIS_PORT: '6379'
+  REDIS_URL: redis://redis:6379
+  MONGO_URI: mongodb://${MONGO_INITDB_ROOT_USERNAME:-nestjs}:${MONGO_INITDB_ROOT_PASSWORD:-change-me}@mongo:27017/${MONGO_INITDB_DATABASE:-nestjs}?authSource=admin
+  PIM_S3_ENDPOINT: http://minio:9000
+  PIM_S3_BUCKET: ${PIM_S3_BUCKET:-pim-media}
+  PIM_S3_ACCESS_KEY: ${PIM_S3_ACCESS_KEY:-minioadmin}
+  PIM_S3_SECRET_KEY: ${PIM_S3_SECRET_KEY:-minioadmin}
+
+x-app-depends-on: &app-depends-on
+  postgres:
+    condition: service_healthy
+  redis:
+    condition: service_healthy
+  mongo:
+    condition: service_healthy
+  migrate:
+    condition: service_completed_successfully
+
 services:
-  # Only infrastructure runs in compose. The apps (api, worker, cron, web, auth, notifications) run on the host with
-  # `pnpm dev`; see docs/runbook.md ("Running the apps") for why there are no app services here.
+  # ---- Applications (opt-in: `docker compose --profile apps up -d --build`) -----------------------------------
+  # Plain `docker compose up` still starts infrastructure only. Build context is the repo root; each image is
+  # produced by apps/<app>/Dockerfile (turbo prune -> build -> prod-only runtime, non-root).
+
+  # One-shot: applies prisma migrations (needs the prisma CLI, so it uses the Dockerfile's `migrate` stage).
+  migrate:
+    profiles: [apps]
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+      target: migrate
+    image: pim-migrate:local
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-nestjs}:${POSTGRES_PASSWORD:-change-me}@postgres:5432/${POSTGRES_DB:-nestjs}?schema=public
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - app
+    restart: 'no'
+
+  api:
+    profiles: [apps]
+    build: { context: ., dockerfile: apps/api/Dockerfile, target: runtime }
+    image: pim-api:local
+    restart: unless-stopped
+    env_file:
+      - path: ./apps/api/.env
+        required: false
+    environment:
+      <<: *app-environment
+      PORT: '3100'
+    ports:
+      - '3100:3100'
+    depends_on: *app-depends-on
+    networks:
+      - app
+
+  worker:
+    profiles: [apps]
+    build: { context: ., dockerfile: apps/worker/Dockerfile, target: runtime }
+    image: pim-worker:local
+    restart: unless-stopped
+    env_file:
+      - path: ./apps/worker/.env
+        required: false
+    environment:
+      <<: *app-environment
+      PORT: '3400'
+    ports:
+      - '3400:3400'
+    depends_on: *app-depends-on
+    networks:
+      - app
+
+  cron:
+    profiles: [apps]
+    build: { context: ., dockerfile: apps/cron/Dockerfile, target: runtime }
+    image: pim-cron:local
+    restart: unless-stopped
+    env_file:
+      - path: ./apps/cron/.env
+        required: false
+    environment:
+      <<: *app-environment
+      PORT: '3200'
+    ports:
+      - '3200:3200'
+    depends_on: *app-depends-on
+    networks:
+      - app
+
+  auth:
+    profiles: [apps]
+    build: { context: ., dockerfile: apps/auth/Dockerfile, target: runtime }
+    image: pim-auth:local
+    restart: unless-stopped
+    env_file:
+      - path: ./apps/auth/.env
+        required: false
+    environment:
+      <<: *app-environment
+      PORT: '3000'
+    ports:
+      - '3000:3000'
+    depends_on: *app-depends-on
+    networks:
+      - app
+
+  notifications:
+    profiles: [apps]
+    build: { context: ., dockerfile: apps/notifications/Dockerfile, target: runtime }
+    image: pim-notifications:local
+    restart: unless-stopped
+    env_file:
+      - path: ./apps/notifications/.env
+        required: false
+    environment:
+      <<: *app-environment
+      PORT: '3300'
+    ports:
+      - '3300:3300'
+    depends_on: *app-depends-on
+    networks:
+      - app
+
+  # nginx (unprivileged, 8080): Angular static build + same-origin /api/ proxy to api:3100.
+  web:
+    profiles: [apps]
+    build: { context: ., dockerfile: apps/web/Dockerfile, target: runtime }
+    image: pim-web:local
+    restart: unless-stopped
+    environment:
+      API_UPSTREAM: http://api:3100
+    ports:
+      - '8080:8080'
+    depends_on:
+      - api
+    networks:
+      - app
+
+  # ---- Infrastructure ------------------------------------------------------------------------------------
 
   prometheus:
     image: prom/prometheus:v3.4.0
